@@ -68,9 +68,41 @@ NullPointerMarketSearchLine/
         └── office.json
 ```
 
-## Как запустить локально (Linux)
+## Как запустить локально
 
-Потребуется `go >= 1.22` и `python3 >= 3.10`.
+Потребуется **Go >= 1.22** и **Python >= 3.10**.
+
+> **Важно:** нужны **два** процесса. ML на порту `8000` — это только нормализация запросов.
+> Сайт и поиск открываются на **`http://127.0.0.1:8080`** (Go-бэкенд). Без Go страница не откроется.
+
+### Windows (два окна CMD или PowerShell)
+
+**Окно 1** — ML:
+
+```bat
+cd ml
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Проверка: http://127.0.0.1:8000/health
+
+**Окно 2** — Go (сначала установи Go: `winget install GoLang.Go`, перезапусти терминал):
+
+```bat
+cd backend
+set ML_URL=http://127.0.0.1:8000
+set WEB_DIR=web
+go run .
+```
+
+Проверка: http://127.0.0.1:8080/health → в браузере http://127.0.0.1:8080
+
+Если `go: command not found` — Go не в PATH, установи с https://go.dev/dl/ и **перезапусти терминал**.
+
+### Linux / Git Bash
 
 ### Вариант 1 — одной командой
 
