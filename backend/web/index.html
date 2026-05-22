@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NullPointer — поиск цен</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>NullPointer · поиск товаров по маркетплейсам</h1>
+    <p class="subtitle">Baseline для Tender Hack — Yandex Market · Ozon · Wildberries · Citilink</p>
+  </header>
+
+  <main>
+    <form id="search-form" class="search-form">
+      <div class="field grow">
+        <label for="query">Запрос</label>
+        <input id="query" name="query" type="text" placeholder="например: футболка хлопок мужская" required />
+      </div>
+      <div class="field">
+        <label for="region">Регион</label>
+        <input id="region" name="region" type="text" value="Москва" />
+      </div>
+      <button type="submit" id="submit-btn">Искать</button>
+    </form>
+
+    <section id="normalization" class="normalization hidden">
+      <h2>Нормализация запроса</h2>
+      <dl>
+        <dt>Исходный</dt><dd id="n-raw"></dd>
+        <dt>Исправленный</dt><dd id="n-corrected"></dd>
+        <dt>Синонимы</dt><dd id="n-synonyms"></dd>
+        <dt>Расширенные запросы</dt><dd id="n-expanded"></dd>
+      </dl>
+    </section>
+
+    <section id="results"></section>
+
+    <p id="status-line" class="status-line"></p>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
