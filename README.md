@@ -142,6 +142,29 @@ go run .
 | `ML_URL`   | `http://localhost:8000`   | Адрес Python ML-сервиса          |
 | `WEB_DIR`  | `web`                     | Папка со статикой фронтенда      |
 
+### ML: опциональный SAGE spell-checker
+
+Локальная модель [ai-forever/sage-fredt5-distilled-95m](https://huggingface.co/ai-forever/sage-fredt5-distilled-95m) (~95M, без внешних API). По умолчанию **выключена** (быстрый старт).
+
+```bash
+cd ml
+pip install -r requirements.txt   # torch + transformers при первом включении
+
+export SAGE_ENABLED=1             # Git Bash / Linux
+export SAGE_DEVICE=cpu            # или cuda, если есть GPU
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Первый запрос скачает веса с Hugging Face (~380 MB). В `/health`: `sage_enabled`, `sage_loaded`.
+
+Когда SAGE включён: правит **весь запрос целиком**, SymSpell по токенам **не вызывается** (чтобы не портить уже исправленный текст).
+
+### SymSpell: словарь частот
+
+Основной русский словарь: `ml/data/ru-100k.txt` (формат: `слово частота`, ~100k строк).  
+Доменные бусты: `ml/dictionaries/*.json` (футболка, принтер, шины…).  
+Если `ru-100k.txt` удалить — fallback на `wordfreq`.
+
 ## Пример запроса
 
 ```bash
