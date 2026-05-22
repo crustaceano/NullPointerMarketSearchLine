@@ -6,9 +6,13 @@ import (
 	"nullpointer/backend/internal/models"
 )
 
-type Wildberries struct{}
+type Wildberries struct {
+	fetcher HTMLFetcher
+}
 
-func NewWildberries() *Wildberries { return &Wildberries{} }
+func NewWildberries(fetcher HTMLFetcher) *Wildberries {
+	return &Wildberries{fetcher: fetcher}
+}
 
 func (a *Wildberries) Name() string { return "Wildberries" }
 

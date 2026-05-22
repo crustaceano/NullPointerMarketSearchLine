@@ -6,9 +6,13 @@ import (
 	"nullpointer/backend/internal/models"
 )
 
-type YandexMarket struct{}
+type YandexMarket struct {
+	fetcher HTMLFetcher
+}
 
-func NewYandexMarket() *YandexMarket { return &YandexMarket{} }
+func NewYandexMarket(fetcher HTMLFetcher) *YandexMarket {
+	return &YandexMarket{fetcher: fetcher}
+}
 
 func (a *YandexMarket) Name() string { return "Yandex Market" }
 

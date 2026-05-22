@@ -6,9 +6,13 @@ import (
 	"nullpointer/backend/internal/models"
 )
 
-type Ozon struct{}
+type Ozon struct {
+	fetcher HTMLFetcher
+}
 
-func NewOzon() *Ozon { return &Ozon{} }
+func NewOzon(fetcher HTMLFetcher) *Ozon {
+	return &Ozon{fetcher: fetcher}
+}
 
 func (a *Ozon) Name() string { return "Ozon" }
 
