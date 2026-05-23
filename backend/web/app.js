@@ -23,6 +23,9 @@ form.addEventListener("submit", async (e) => {
       throw new Error(err.error || `HTTP ${resp.status}`);
     }
     const data = await resp.json();
+    if (data.region) {
+      document.getElementById("region").value = data.region;
+    }
     renderNormalization(data.normalization);
     renderSources(data.sources);
     statusLine.textContent = summarize(data.sources);

@@ -146,7 +146,7 @@ func parseYandexApiaryOffers(page []byte, region string) []models.ProductOffer {
 			continue
 		}
 		if builder.offer.URL == "" {
-			builder.offer.URL = yandexSearchURL(builder.offer.Title)
+			builder.offer.URL = yandexSearchURL(builder.offer.Title, region)
 		}
 		if builder.quantityMax > 0 {
 			builder.offer.Characteristics["В наличии"] = "да"
@@ -182,7 +182,7 @@ func applyYandexApiaryCart(builder *yandexApiaryOfferBuilder, payload json.RawMe
 	if image := yandexImageFromMeta(item.ImageMeta); image != "" && builder.offer.Image == "" {
 		builder.offer.Image = image
 	}
-	if url := yandexApiaryProductURL(item); url != "" {
+	if url := yandexApiaryProductURL(item, region); url != "" {
 		builder.offer.URL = url
 	}
 	if builder.offer.Characteristics == nil {
@@ -295,11 +295,11 @@ func yandexImageFromMeta(image yandexApiaryImage) string {
 	return fmt.Sprintf("https://avatars.mds.yandex.net/get-%s/%d/%s/orig", namespace, image.GroupID, image.Key)
 }
 
-func yandexApiaryProductURL(item *yandexPendingCartItem) string {
+func yandexApiaryProductURL(item *yandexPendingCartItem, region string) string {
 	if item == nil || item.Name == "" {
 		return ""
 	}
 	// Apiary cart payload does not expose a stable human product link, so this is
 	// only a valid fallback when the DOM card link is missing.
-	return yandexSearchURL(item.Name)
+	return yandexSearchURL(item.Name, region)
 }

@@ -1,31 +1,11 @@
 #!/usr/bin/env bash
 # Launches ML (:8000) and Go backend (:8080) together.
-# Requires: go >= 1.22, python3 >= 3.10
-# Linux/macOS/Git Bash on Windows. On Windows use: source .venv/Scripts/activate
+# Requires: go >= 1.22, python >= 3.10
 set -euo pipefail
 
-cd "$(dirname "$0")"
-
-PYTHON_BIN="${PYTHON_BIN:-python3.12}"
-ML_DIR="./ml"
-VENV_DIR="$ML_DIR/.venv"
-
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Error: $PYTHON_BIN not found."
-  echo "Install Python 3.12 or run with: PYTHON_BIN=/path/to/python3.12 ./run.sh"
-  exit 1
-fi
-
-if [ ! -d "$VENV_DIR" ]; then
-  "$PYTHON_BIN" -m venv "$VENV_DIR"
-fi
-
-source "$VENV_DIR/bin/activate"
-
-python -m pip install -U pip setuptools wheel
-pip install -r "$ML_DIR/requirements.txt"
-
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+ML_DIR="$ROOT/ml"
+VENV_DIR="$ML_DIR/.venv"
 
 if ! command -v go >/dev/null 2>&1; then
   echo "ERROR: Go is not installed or not in PATH."
@@ -33,33 +13,55 @@ if ! command -v go >/dev/null 2>&1; then
   exit 1
 fi
 
+choose_python() {
+  if [ -n "${PYTHON_BIN:-}" ]; then
+    if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+      command -v "$PYTHON_BIN"
+      return 0
+    fi
+    echo "ERROR: PYTHON_BIN=$PYTHON_BIN not found."
+    exit 1
+  fi
+
+  for candidate in python3.12 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERROR: Python not found. Install Python >= 3.10 or run with: PYTHON_BIN=/path/to/python ./run.sh"
+  exit 1
+}
+
 # --- ML service ---
-cd "$ROOT/ml"
-if [ ! -d ".venv" ]; then
-  python3 -m venv .venv 2>/dev/null || python -m venv .venv
+if [ ! -d "$VENV_DIR" ]; then
+  PYTHON_BIN="$(choose_python)"
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
-if [ -f ".venv/Scripts/activate" ]; then
+if [ -f "$VENV_DIR/Scripts/activate" ]; then
   # Windows (Git Bash)
   # shellcheck disable=SC1091
-  source .venv/Scripts/activate
-elif [ -f ".venv/bin/activate" ]; then
+  source "$VENV_DIR/Scripts/activate"
+elif [ -f "$VENV_DIR/bin/activate" ]; then
   # Linux / macOS
   # shellcheck disable=SC1091
-  source .venv/bin/activate
+  source "$VENV_DIR/bin/activate"
 else
-  echo "ERROR: venv not found in ml/.venv"
+  echo "ERROR: venv not found in $VENV_DIR"
   exit 1
 fi
 
-pip install -q -r requirements.txt
+python -m pip install -q -r "$ML_DIR/requirements.txt"
 
+cd "$ML_DIR"
 uvicorn app:app --host 127.0.0.1 --port 8000 &
 ML_PID=$!
 echo "ml service started (pid=$ML_PID) -> http://127.0.0.1:8000/health"
 
 cleanup() {
-  echo "shutting down…"
+  echo "shutting down..."
   kill "$ML_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM

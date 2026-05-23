@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"fmt"
+	"html"
 	"net/url"
 	"strings"
 
@@ -27,9 +28,9 @@ func mockOffers(source, query, region string, basePrice float64, host string) []
 			Currency: "RUB",
 			URL:      fmt.Sprintf("https://%s/search?text=%s&region=%s", host, encoded, url.QueryEscape(region)),
 			Characteristics: map[string]string{
-				"Регион":      region,
-				"Гарантия":    "12 мес.",
-				"В наличии":   "да",
+				"Регион":       region,
+				"Гарантия":     "12 мес.",
+				"В наличии":    "да",
 				"Комплектация": "стандарт",
 			},
 		},
@@ -41,9 +42,9 @@ func mockOffers(source, query, region string, basePrice float64, host string) []
 			Currency: "RUB",
 			URL:      fmt.Sprintf("https://%s/search?text=%s&sort=price_desc", host, encoded),
 			Characteristics: map[string]string{
-				"Регион":      region,
-				"Гарантия":    "24 мес.",
-				"В наличии":   "да",
+				"Регион":       region,
+				"Гарантия":     "24 мес.",
+				"В наличии":    "да",
 				"Комплектация": "расширенная",
 			},
 		},
@@ -65,6 +66,7 @@ func mockOffers(source, query, region string, basePrice float64, host string) []
 }
 
 func placeholderImage(source string, idx int) string {
-	// Tiny inline-friendly placeholder image service. No external API key.
-	return fmt.Sprintf("https://placehold.co/240x180?text=%s+%d", url.QueryEscape(source), idx)
+	label := html.EscapeString(fmt.Sprintf("%s %d", source, idx))
+	svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="180"><rect width="240" height="180" fill="#e2e8f0"/><text x="120" y="95" text-anchor="middle" font-family="Arial" font-size="18" fill="#475569">%s</text></svg>`, label)
+	return "data:image/svg+xml," + url.QueryEscape(svg)
 }

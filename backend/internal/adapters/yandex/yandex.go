@@ -9,6 +9,7 @@ import (
 
 	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
+	"nullpointer/backend/internal/regions"
 )
 
 const yandexMarketHost = "https://market.yandex.ru"
@@ -31,7 +32,7 @@ func (a *YandexMarket) Search(ctx context.Context, query, region string) ([]mode
 		return nil, nil
 	}
 
-	page, err := a.fetcher.Fetch(ctx, yandexSearchURL(query))
+	page, err := a.fetcher.Fetch(ctx, yandexSearchURL(query, region))
 	if err != nil {
 		return nil, fmt.Errorf("yandex market fetch: %w", err)
 	}
@@ -49,9 +50,10 @@ func (a *YandexMarket) Search(ctx context.Context, query, region string) ([]mode
 	return offers, nil
 }
 
-func yandexSearchURL(query string) string {
+func yandexSearchURL(query, region string) string {
 	values := url.Values{}
 	values.Set("text", query)
 	values.Set("cvredirect", "0")
+	values.Set("lr", regions.YandexLR(region))
 	return yandexMarketHost + "/search?" + values.Encode()
 }
