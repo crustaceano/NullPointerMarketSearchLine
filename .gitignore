@@ -252,3 +252,4 @@ go.work.sum
 # .idea/
 # .vscode/
 *.pdf
+.idea
