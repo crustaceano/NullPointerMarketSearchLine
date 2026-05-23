@@ -1,0 +1,22 @@
+{"id": "tz_1",  "raw": "Тостовка one piece",                              "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet знает 'тостовка'? скорее нет. WordNet знает 'one'/'piece' — это латиница, нет."}
+{"id": "tz_2",  "raw": "Зипка пурпурная май литл пони",                  "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet знает 'пурпурная' (фиолетовый). 'зипка' — нет."}
+{"id": "tz_3",  "raw": "зимная резина 205 55 16 нокиан",                 "expected_protected_texts": ["205", "55", "16"],                               "min_valid_expansions": 1, "comment": "числа защищены как size/number; 'резина' раскроется в WordNet"}
+{"id": "tz_4",  "raw": "принтир хп лазерный вайфай",                     "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "после typo: 'принтер' → синонимы есть"}
+{"id": "tz_5",  "raw": "белые кроссовки nike air max 90 размер 43",      "expected_protected_texts": ["90", "43"],                                      "min_valid_expansions": 1, "comment": "числа защищены"}
+
+{"id": "clo_1", "raw": "худи чёрное",                                    "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet 'худи' не знает; 'чёрное' тоже не знает (наблюдалось в smoke)"}
+{"id": "clo_2", "raw": "ветровка чёрная",                                "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "ветровка — wiki-ru-wordnet знает 'штормовка'; ruwn — нет"}
+{"id": "clo_3", "raw": "куртка зимняя пуховик columbia",                 "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "куртка → курточка"}
+{"id": "clo_4", "raw": "мастерка спорткостюм",                           "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "оба слова жаргон, WordNet пустоват — но valid_expansions ≥1 за счёт самого corrected"}
+{"id": "clo_5", "raw": "толстовка на молнии красная",                    "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "толстовка → свитшот; красная → красноватый"}
+
+{"id": "tir_1", "raw": "летние шины 225/45 r17 michelin",                "expected_protected_texts": ["225/45", "r17"],                                  "min_valid_expansions": 1, "comment": "число и артикул защищены; шины→покрышка/авторезина"}
+{"id": "tir_2", "raw": "шипованные шины nokian",                         "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet не знает 'шипованные', знает 'шины'"}
+{"id": "tir_3", "raw": "зимняя липучка continental",                     "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "ОПАСНО: WordNet 'липучка' = застёжка (омоним); ожидаем мусорные expansions, но valid≥1 за счёт corrected"}
+
+{"id": "off_1", "raw": "лазерный принтер brother",                       "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet 'принтер' → 'печатающее устройство'"}
+{"id": "off_2", "raw": "струйный принтер epson цветной",                 "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "то же"}
+{"id": "off_3", "raw": "беспроводная клавиатура apple",                  "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "WordNet 'беспроводной' пуст в ruwn"}
+
+{"id": "edge_1", "raw": "Brother HL-L2375DWR",                           "expected_protected_texts": ["hl-l2375dwr"],                                    "min_valid_expansions": 1, "comment": "артикул защищён регексом"}
+{"id": "edge_2", "raw": "розовая толстовка my little pony",              "expected_protected_texts": [],                                                "min_valid_expansions": 1, "comment": "толстовка→свитшот; my/little/pony — WordNet их не знает"}

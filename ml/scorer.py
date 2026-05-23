@@ -286,6 +286,78 @@ class RelevanceScorer:
             print(f"[scorer] batch inference failed: {exc}", flush=True)
             return None
 
+    def score_pairs(
+        self, premises: list[str], hypotheses: list[str]
+    ) -> Optional[list[float]]:
+        """Произвольные NLI-пары: для i-й пары (premises[i], hypotheses[i]).
+
+        В отличие от `score_many`, у каждой пары своя premise. Используется,
+        например, в `/expand` для фильтрации кандидатов: premise=исходный
+        запрос, hypothesis=expanded query → score близок к 1, если расширение
+        не противоречит оригиналу, и к 0 — если противоречит.
+
+        Семантика scores та же, что у `score`/`score_many` (NLI или fallback).
+        """
+        if len(premises) != len(hypotheses):
+            raise ValueError("premises and hypotheses must have the same length")
+        if not premises:
+            return []
+        if not self._ensure_loaded():
+            return None
+
+        keep_idx: list[int] = []
+        keep_a: list[str] = []
+        keep_b: list[str] = []
+        for i, (a_raw, b_raw) in enumerate(zip(premises, hypotheses)):
+            a = (a_raw or "").strip()
+            b = (b_raw or "").strip()
+            if a and b:
+                keep_idx.append(i)
+                keep_a.append(a)
+                keep_b.append(b)
+
+        results: list[float] = [0.0] * len(premises)
+        if not keep_idx:
+            return results
+
+        try:
+            import torch
+
+            assert self._tokenizer is not None
+            assert self._model is not None
+
+            # NLI-режим: text_a=premise, text_b=hypothesis. Fallback (не NLI):
+            # text_a=hypothesis, text_b=premise — это условно "запрос-passage",
+            # как делает обычный cross-encoder.
+            if self.is_nli:
+                text_a, text_b = keep_a, keep_b
+            else:
+                text_a, text_b = keep_b, keep_a
+
+            inputs = self._tokenizer(
+                text_a,
+                text_b,
+                padding=True,
+                truncation=True,
+                max_length=self.max_length,
+                return_tensors="pt",
+            )
+            try:
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            except Exception:
+                pass
+
+            with torch.inference_mode():
+                logits = self._model(**inputs).logits
+
+            values = self._logits_to_scores(logits)
+            for idx, v in zip(keep_idx, values):
+                results[idx] = v
+            return results
+        except Exception as exc:
+            print(f"[scorer] pairs inference failed: {exc}", flush=True)
+            return None
+
 
 def get_shared_scorer() -> Optional[RelevanceScorer]:
     """Singleton: одна модель в памяти на процесс FastAPI."""

@@ -1,11 +1,17 @@
-"""Lightweight query normalizer.
+"""Lightweight query normalizer (typo-correction only).
 
 Pipeline:
   raw → [optional SAGE full-sentence cleanup] →
-  tokenize → [drop stopwords only if STOPWORDS_FILTER=1] → [SymSpell] →
-  collect synonyms → build expanded queries.
+  tokenize → [drop stopwords only if STOPWORDS_FILTER=1] → [SymSpell].
 
 When SAGE_ENABLED=1, SymSpell per-token step is skipped (SAGE already fixed text).
+
+Synonym expansion здесь **не делается**. Единственный источник синонимов
+в системе — WordNet (см. /expand pipeline в `synonyms/`). Поля
+`synonyms` в `dictionaries/*.json` остаются исключительно для domain-boost
+SymSpell: слова, перечисленные в `terms` и `synonyms`, защищены от
+ошибочной коррекции в общерусское слово (например, `мфу`, `tshirt`,
+`сканер`).
 
 Two vocabularies in play:
 - domain_vocab : project-specific anchor words from JSON dictionaries. A token
@@ -20,7 +26,6 @@ are optional and degrade gracefully.
 
 from __future__ import annotations
 
-import itertools
 import json
 import re
 from dataclasses import dataclass, field
@@ -157,6 +162,19 @@ class Normalizer:
     def full_vocab_size(self) -> int:
         return self._full_vocab_size
 
+    def add_anchor_words(self, words) -> None:
+        """Помечает слова как «канонические» — не корректировать опечатками.
+
+        Используется когда поверх Normalizer-а живёт synonym DB с
+        концептами: их single-word phrases должны попадать в детектор
+        в неискажённом виде, иначе SymSpell может перепутать редкое
+        доменное слово (`зипка`, `мастерка`) с похожим из общего русского.
+        """
+        for w in words:
+            w_l = (w or "").strip().lower()
+            if w_l and " " not in w_l:
+                self._domain_vocab.add(w_l)
+
     def _normalize_token(self, token: str) -> str:
         """Resolve a token to its best searchable form."""
         # Keep sizes/articles/models unchanged: 15, 42, x5, 4060ti.
@@ -164,24 +182,39 @@ class Normalizer:
             return token
 
         # Conservative mode: do not "fix" already valid words.
-        # 1) domain word
-        # 2) known by built vocabulary
-        # 3) common Russian word by zipf_frequency
+        # 1) domain word (project anchors / jargon dict)
+        # 2) known by built vocabulary (ru-100k.txt)
+        # 3) reasonably common Russian word by zipf_frequency
         if token in self._domain_vocab or token in self._full_vocab:
             return token
-        if self._zipf_frequency is not None and self._zipf_frequency(token, "ru") >= 2.0:
+        if self._zipf_frequency is not None and self._zipf_frequency(token, "ru") >= 1.5:
+            # Понизили порог 2.0 → 1.5: больше «редких но реальных» слов
+            # пройдут как valid. Цена — мы можем пропустить опечатку, но
+            # это лучше чем подменить редкое доменное слово (`зипка`,
+            # `мфу`, `тишотка`) на похожее общерусское.
             return token
 
         corrected_raw = self.corrector.correct(token)
-        if corrected_raw != token and corrected_raw in self._domain_vocab:
+        if corrected_raw == token:
+            return token
+
+        # Anchor: коррекция в доменное слово — всегда полезна
+        # (`приттер` → `принтер`).
+        if corrected_raw in self._domain_vocab:
             return corrected_raw
 
-        # Temporarily disable lemmatization/infinitive conversion:
-        # keep corrected surface form exactly as user sees it.
-        if corrected_raw != token:
-            return corrected_raw
+        # Guard: коррекция должна явно поднимать частотность.
+        # Иначе мы подменяем одно редкое слово на другое (`зипка`→`липка`),
+        # а пользователь хотел именно redкое доменное.
+        if self._zipf_frequency is not None:
+            z_token = self._zipf_frequency(token, "ru")
+            z_corr = self._zipf_frequency(corrected_raw, "ru")
+            # требуем минимум +1.0 zipf (≈ 10× частотнее) — разница между
+            # «совсем редкое» и «вполне нормальное русское».
+            if z_corr - z_token < 1.0:
+                return token
 
-        return token
+        return corrected_raw
 
     def _tokens_to_corrected(
         self, text: str, *, use_symspell: bool
@@ -199,6 +232,15 @@ class Normalizer:
         return processed, corrected
 
     def normalize(self, raw: str) -> Dict[str, object]:
+        """Только typo correction.
+
+        Раньше здесь жил cartesian-product расширения через
+        `dicts.synonyms` (legacy). Источник синонимов в системе теперь
+        один — WordNet (см. `/expand`). JSON-словари остаются для
+        domain-boost SymSpell (защищают слова `мфу`/`tshirt`/`сканер`
+        от ошибочной коррекции), но как источник расширения больше
+        не используются.
+        """
         raw_clean = (raw or "").strip()
 
         working_text = raw_clean
@@ -209,35 +251,15 @@ class Normalizer:
                 working_text = sage_text
                 use_symspell = False
 
-        processed, corrected = self._tokens_to_corrected(
+        _, corrected = self._tokens_to_corrected(
             working_text, use_symspell=use_symspell
         )
-
-        synonyms: List[str] = []
-        per_token_alts: List[List[str]] = []
-        for tok in processed:
-            alts = [tok] + [s for s in self.dicts.synonyms.get(tok, []) if s != tok]
-            per_token_alts.append(alts)
-            for s in alts[1:]:
-                if s not in synonyms:
-                    synonyms.append(s)
-
-        expanded: List[str] = []
-        if per_token_alts:
-            for combo in itertools.product(*per_token_alts):
-                q = " ".join(combo)
-                if q and q not in expanded:
-                    expanded.append(q)
-                if len(expanded) >= self.max_expansions:
-                    break
-        if corrected and corrected not in expanded:
-            expanded.insert(0, corrected)
-        if not expanded:
-            expanded = [raw_clean]
 
         return {
             "raw": raw_clean,
             "corrected": corrected,
-            "synonyms": synonyms[:10],
-            "expanded_queries": expanded[: self.max_expansions],
+            # Поля сохранены для backward-compat клиентов /normalize.
+            # Реальное расширение запроса делается через /expand (WordNet).
+            "synonyms": [],
+            "expanded_queries": [corrected] if corrected else [raw_clean],
         }

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from routers import extract, health, normalize, score
+from routers import expand, extract, health, normalize, score
 
 
-app = FastAPI(title="NullPointer ML Normalizer", version="0.9.0")
+app = FastAPI(title="NullPointer ML Normalizer", version="0.10.0")
 
 app.include_router(health.router)
 app.include_router(normalize.router)
 app.include_router(extract.router)
 app.include_router(score.router)
+app.include_router(expand.router)
