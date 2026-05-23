@@ -2,6 +2,7 @@ package ozon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -56,13 +57,20 @@ func (s *SmartAntiCaptchaFetcher) Fetch(ctx context.Context, rawURL string) ([]b
 	s.mu.RUnlock()
 
 	if len(cachedCookies) > 0 {
-		fastCtx := context.WithValue(ctx, "bypass_cookies", cachedCookies)
-		fastCtx = context.WithValue(fastCtx, "bypass_ua", cachedUA)
-		return s.baseFetcher.Fetch(fastCtx, rawURL)
+		body, err := s.fetchWithBypassCredentials(ctx, host, rawURL, cachedCookies, cachedUA)
+		if err == nil {
+			return body, nil
+		}
+		if !errors.Is(err, ErrBlocked) {
+			return nil, err
+		}
+		log.Printf("[SmartFetcher] Кэшированные куки для %s привели к капче, обновляем bypass-сессию", host)
+		s.clearCachedBypass(host)
 	}
 
 	// 2. Блокировка параллельных запусков Chromium
 	s.bypassMutex.Lock()
+	defer s.bypassMutex.Unlock()
 
 	s.mu.RLock()
 	currentCookies := s.cookies[host]
@@ -70,22 +78,21 @@ func (s *SmartAntiCaptchaFetcher) Fetch(ctx context.Context, rawURL string) ([]b
 	s.mu.RUnlock()
 
 	if len(currentCookies) > 0 {
-		s.bypassMutex.Unlock()
-		retryCtx := context.WithValue(ctx, "bypass_cookies", currentCookies)
-		retryCtx = context.WithValue(retryCtx, "bypass_ua", currentUA)
-		return s.baseFetcher.Fetch(retryCtx, rawURL)
+		body, err := s.fetchWithBypassCredentials(ctx, host, rawURL, currentCookies, currentUA)
+		if err == nil {
+			return body, nil
+		}
+		if !errors.Is(err, ErrBlocked) {
+			return nil, err
+		}
+		log.Printf("[SmartFetcher] Обновленные другим потоком куки для %s тоже привели к капче, запускаем новый bypass", host)
+		s.clearCachedBypass(host)
 	}
 
 	log.Printf("[SmartFetcher] Поток получил монопольный доступ. Запуск скрытого Chromium для %s...", host)
 
-	bgCtx, bgCancel := context.WithTimeout(context.Background(), 45*time.Second)
-	_ = bgCtx // используем для логики таймаута внутри resolveCaptchaWithBrowser
-
 	newCookies, newUA, err := s.resolveCaptchaWithBrowser(rawURL)
-	bgCancel()
-
 	if err != nil {
-		s.bypassMutex.Unlock()
 		return nil, fmt.Errorf("browser captcha bypass failed: %w", err)
 	}
 
@@ -95,18 +102,40 @@ func (s *SmartAntiCaptchaFetcher) Fetch(ctx context.Context, rawURL string) ([]b
 	s.userAgents[host] = newUA
 	s.mu.Unlock()
 
-	s.bypassMutex.Unlock()
+	body, err := s.fetchWithBypassCredentials(ctx, host, rawURL, newCookies, newUA)
+	if err == nil {
+		return body, nil
+	}
+	if errors.Is(err, ErrBlocked) {
+		s.clearCachedBypass(host)
+		return nil, fmt.Errorf("source still returned captcha after browser bypass")
+	}
+	return nil, err
+}
 
-	// 3. Если к этому моменту контекст самого HTTP-запроса пользователя (curl) ещё жив —
-	select {
-	case <-ctx.Done():
-		return nil, fmt.Errorf("куки успешно получены в фоне, но клиент оборвал соединение по таймауту: %w", ctx.Err())
-	default:
+func (s *SmartAntiCaptchaFetcher) fetchWithBypassCredentials(ctx context.Context, host, rawURL string, cookies []*proto.NetworkCookie, userAgent string) ([]byte, error) {
+	retryCtx, cancel := s.contextWithBypassCredentials(ctx, host, cookies, userAgent)
+	defer cancel()
+	return s.baseFetcher.Fetch(retryCtx, rawURL)
+}
+
+func (s *SmartAntiCaptchaFetcher) clearCachedBypass(host string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cookies, host)
+	delete(s.userAgents, host)
+}
+
+func (s *SmartAntiCaptchaFetcher) contextWithBypassCredentials(ctx context.Context, host string, cookies []*proto.NetworkCookie, userAgent string) (context.Context, context.CancelFunc) {
+	cancel := func() {}
+	if err := ctx.Err(); errors.Is(err, context.DeadlineExceeded) {
+		log.Printf("[SmartFetcher] Контекст запроса истек для %s, выполняем ограниченный retry с кэшированными куками: %v", host, err)
+		ctx, cancel = context.WithTimeout(context.Background(), s.baseFetcher.timeout)
 	}
 
-	retryCtx := context.WithValue(ctx, "bypass_cookies", newCookies)
-	retryCtx = context.WithValue(retryCtx, "bypass_ua", newUA)
-	return s.baseFetcher.Fetch(retryCtx, rawURL)
+	ctx = context.WithValue(ctx, "bypass_cookies", cookies)
+	ctx = context.WithValue(ctx, "bypass_ua", userAgent)
+	return ctx, cancel
 }
 
 func (s *SmartAntiCaptchaFetcher) resolveCaptchaWithBrowser(targetURL string) ([]*proto.NetworkCookie, string, error) {
