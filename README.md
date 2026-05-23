@@ -189,15 +189,15 @@ score = 0.5 + 0.5 * (P(entailment) - P(contradiction))
 
 Свойства: `entailment=1 → 1.0`, `neutral=1 → 0.5`, `contradiction=1 → 0.0`. Так пары, которые **не противоречат** запросу, всегда получают больший скор, чем противоречивые.
 
-Базовая модель — [`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7) (~560 MB, mDeBERTa-v3-base, обучена на 100+ языках на XNLI/MultiNLI/ANLI). Multilingual — чтобы карточки со смешанными русско-английскими полями (`brand: Michelin`, `сезон: летние`) работали без перевода. По умолчанию **выключен**.
+Базовая модель — [`cointegrated/rubert-base-cased-nli-threeway`](https://huggingface.co/cointegrated/rubert-base-cased-nli-threeway) (~700 MB, RuBERT-base, обучена на русских NLI-датасетах). Карточки предполагаются на русском — multilingual mDeBERTa на CPU слишком медленная. По умолчанию **выключен**.
 
 ```bash
 cd ml
 pip install -r requirements.txt
 
 export SCORER_ENABLED=1
-export SCORER_DEVICE=cpu                                                          # или cuda
-export SCORER_MODEL_ID=MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7  # дефолт
+export SCORER_DEVICE=cpu                                          # или cuda
+export SCORER_MODEL_ID=cointegrated/rubert-base-cased-nli-threeway # дефолт
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 

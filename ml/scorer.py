@@ -14,13 +14,11 @@ entailment / neutral / contradiction.
   * contradiction=1                    → 0.0  (запрос противоречит карточке)
   * непротиворечивые пары всегда ≥ противоречивых при равных prior'ах.
 
-Базовая модель: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
-(~560 MB, mDeBERTa-v3-base, обучена на 100+ языках на XNLI/MultiNLI/ANLI
-и других NLI-датасетах). Multilingual специально, чтобы:
-  * терпимо относиться к смешанным карточкам (русские поля + английские
-    бренды/значения, либо полностью английские карточки);
-  * не зависеть от языка ключей JSON.
-https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+Базовая модель: cointegrated/rubert-base-cased-nli-threeway (~700 MB,
+RuBERT-base, обучена на русских NLI-датасетах). На CPU работает
+заметно быстрее multilingual-DeBERTa, поэтому жертвуем мультиязычностью
+(карточки приходят преимущественно на русском).
+https://huggingface.co/cointegrated/rubert-base-cased-nli-threeway
 
 Скрипт-эвал на размеченных парах: `python ml/eval_scorer.py`.
 
@@ -28,7 +26,7 @@ https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
   SCORER_ENABLED=1
 Дополнительно:
   SCORER_DEVICE=cpu     (по умолчанию) или cuda
-  SCORER_MODEL_ID=MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7  (дефолт)
+  SCORER_MODEL_ID=cointegrated/rubert-base-cased-nli-threeway   (дефолт)
                   | <другой NLI чекпоинт с label-ами entailment/contradiction>
 
 Если модель НЕ NLI (нет в id2label `entailment`/`contradiction`) — скорер
@@ -43,9 +41,7 @@ import threading
 from typing import Any, Iterable, Optional
 
 
-MODEL_ID_DEFAULT = (
-    "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
-)
+MODEL_ID_DEFAULT = "cointegrated/rubert-base-cased-nli-threeway"
 _MAX_LEN_DEFAULT = 256
 
 _load_lock = threading.Lock()
@@ -64,9 +60,9 @@ def _env_enabled() -> bool:
 def product_to_text(product: Any) -> str:
     """Произвольный JSON карточки → плоский текст `key: value` для NLI.
 
-    Рекурсивно обходит dict/list. Multilingual NLI терпит ключи на
-    любом языке, так что бизнес-логика про конкретные поля сюда не
-    лезет.
+    Рекурсивно обходит dict/list. Бизнес-логика про конкретные поля
+    сюда не лезет — модель сама разберётся по тексту. Карточки
+    предполагаются на русском языке (под выбранную RuBERT-NLI).
     """
     return ". ".join(_iter_kv(product, prefix=""))
 
@@ -90,7 +86,7 @@ def _iter_kv(node: Any, prefix: str) -> Iterable[str]:
 class RelevanceScorer:
     """Lazy-loaded NLI-based scorer для пары (query, product_text)."""
 
-    name = "mdeberta-v3-base-xnli-multilingual"
+    name = "rubert-base-cased-nli-threeway"
 
     def __init__(
         self,
@@ -125,7 +121,7 @@ class RelevanceScorer:
                 t0 = time.perf_counter()
                 print(
                     f"[scorer] загружаю {self.model_id} "
-                    f"(первый раз ~560 MB с huggingface)...",
+                    f"(первый раз ~700 MB с huggingface)...",
                     flush=True,
                 )
                 self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
