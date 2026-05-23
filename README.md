@@ -161,6 +161,24 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Когда SAGE включён: правит **весь запрос целиком**, SymSpell по токенам **не вызывается** (чтобы не портить уже исправленный текст).
 
+### ML: опциональный GLiNER entity extractor
+
+Извлекает структурированные сущности (товар, бренд, цвет, размер, сезон, индекс шин и т.д.) из запроса. По умолчанию **выключен**. Базовая модель [`urchade/gliner_multi-v2.1`](https://huggingface.co/urchade/gliner_multi-v2.1) (~209M).
+
+```bash
+cd ml
+pip install -r requirements.txt
+
+export GLINER_ENABLED=1
+export GLINER_DEVICE=cpu                                  # или cuda
+export GLINER_MODEL_ID=urchade/gliner_multi-v2.1          # дефолт
+# либо локальный fine-tune:
+# export GLINER_MODEL_ID=ml/models/gliner-marketplace
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Эндпоинт: `POST /extract` с телом `{"query": "...", "category": "одежда|шины|оргтехника"}`. Универсальные лейблы и наборы под категорию — в `ml/entity_extractor.py` (`DEFAULT_LABELS`, `LABELS_BY_CATEGORY`).
+
 ### SymSpell: словарь частот
 
 Основной русский словарь: `ml/data/ru-100k.txt` (формат: `слово частота`, ~100k строк).  

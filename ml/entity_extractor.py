@@ -1,13 +1,17 @@
 """Optional entity extractor using GLiNER (multilingual NER, no external API).
 
-Model: urchade/gliner_multi-v2.1
+Базовая модель: urchade/gliner_multi-v2.1
 https://huggingface.co/urchade/gliner_multi-v2.1
+
+Можно подсунуть локальный fine-tune (после `python ml/train_gliner.py`):
+  export GLINER_MODEL_ID=ml/models/gliner-marketplace
 
 Включается через переменную окружения:
   GLINER_ENABLED=1
 Дополнительно:
   GLINER_DEVICE=cpu     (по умолчанию) или cuda
   GLINER_MODEL_ID=urchade/gliner_multi-v2.1
+                  | ml/models/gliner-marketplace (локальный путь)
   GLINER_THRESHOLD=0.5  (минимальная уверенность для попадания в JSON)
 """
 
@@ -37,8 +41,7 @@ DEFAULT_LABELS: List[str] = [
     "назначение",       # для офиса, для дома, для авто, для презентаций
     "формат",           # a4, a3, a0, a1 (бумага / плоттеры / мфу)
     "интерфейс",        # usb, bluetooth, wi-fi, hdmi, lightning
-    "индекс нагрузки",  # 91, 98, 106 (шины)
-    "индекс скорости",  # h, v, t, w, y (шины)
+    "индекс нагрузки и скорости",  # 91v, 98h, 106t (шины — пара "<load><speed>")
 ]
 
 # Лейблы под конкретную категорию: меньше шума, выше точность,
@@ -62,8 +65,7 @@ LABELS_BY_CATEGORY: Dict[str, List[str]] = {
         "сезон",
         "тип конструкции",
         "размер",
-        "индекс нагрузки",
-        "индекс скорости",
+        "индекс нагрузки и скорости",
         "назначение",
     ],
     "оргтехника": [
@@ -120,16 +122,28 @@ class EntityExtractor:
                 return True
             try:
                 import time
+                from pathlib import Path
 
                 from gliner import GLiNER
 
                 t0 = time.perf_counter()
-                print(
-                    f"[gliner] загружаю {self.model_id} "
-                    f"(первый раз ~200 MB с huggingface)...",
-                    flush=True,
-                )
-                self._model = GLiNER.from_pretrained(self.model_id)
+                model_id = self.model_id
+                local_path = Path(model_id)
+                if not local_path.is_absolute():
+                    local_path = Path(__file__).resolve().parent / model_id
+                if local_path.exists():
+                    print(
+                        f"[gliner] загружаю локальную модель: {local_path}",
+                        flush=True,
+                    )
+                    self._model = GLiNER.from_pretrained(str(local_path))
+                else:
+                    print(
+                        f"[gliner] загружаю {model_id} "
+                        f"(первый раз ~200 MB с huggingface)...",
+                        flush=True,
+                    )
+                    self._model = GLiNER.from_pretrained(model_id)
                 try:
                     self._model = self._model.to(self.device)
                 except Exception:

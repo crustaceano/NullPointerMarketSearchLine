@@ -3,10 +3,9 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from entity_extractor import get_shared_entity_extractor
 from normalizer import Dictionaries, Normalizer
 from sage_corrector import get_shared_sage_corrector
 
@@ -16,10 +15,18 @@ DICT_DIR = BASE_DIR / "dictionaries"
 
 dictionaries = Dictionaries.load(DICT_DIR)
 sage = get_shared_sage_corrector()
-extractor = get_shared_entity_extractor()
 normalizer = Normalizer(dictionaries, sage=sage)
 
 app = FastAPI(title="NullPointer ML Normalizer", version="0.8.0")
+
+
+def _gliner_enabled() -> bool:
+    return os.getenv("GLINER_ENABLED", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 class NormalizeRequest(BaseModel):
@@ -62,12 +69,6 @@ def health() -> dict:
         "yes",
         "on",
     )
-    gliner_enabled = os.getenv("GLINER_ENABLED", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
     return {
         "status": "ok",
         "domain_terms": normalizer.domain_terms_count,
@@ -81,9 +82,7 @@ def health() -> dict:
         "sage_enabled": sage_enabled,
         "sage": normalizer.sage_name,
         "sage_loaded": normalizer.sage_loaded,
-        "gliner_enabled": gliner_enabled,
-        "gliner": extractor.name if extractor is not None else "disabled",
-        "gliner_loaded": extractor.loaded if extractor is not None else False,
+        "gliner_enabled": _gliner_enabled(),
     }
 
 
@@ -95,12 +94,28 @@ def normalize(req: NormalizeRequest) -> NormalizeResponse:
 
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest) -> ExtractResponse:
+    if not _gliner_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GLiNER entity extraction отключен. "
+                "Установи GLINER_ENABLED=1 (опционально GLINER_MODEL_ID=...) "
+                "перед запуском сервиса."
+            ),
+        )
+
+    # Импорт лениво — чтобы при выключенном GLiNER в проде не тянуть
+    # gliner/torch и не есть RAM на инициализации.
+    from entity_extractor import get_shared_entity_extractor
+
+    extractor = get_shared_entity_extractor()
+    if extractor is None:
+        raise HTTPException(status_code=503, detail="GLiNER не инициализирован")
+
     raw = (req.query or "").strip()
     corrected = raw
     if req.use_corrected:
         corrected = str(normalizer.normalize(raw)["corrected"])
-    if extractor is None:
-        return ExtractResponse(raw=raw, corrected=corrected, entities={})
     return ExtractResponse(
         raw=raw,
         corrected=corrected,
