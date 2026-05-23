@@ -76,9 +76,6 @@ func (h *SearchHandler) fanOut(ctx context.Context, query, region string, norm m
 			}()
 
 			offers, err := a.Search(ctx, query, region)
-			if err == nil {
-				offers = filterRelevantOffers(offers, norm)
-			}
 			res := models.SourceResult{Source: a.Name(), Offers: []models.ProductOffer{}}
 			switch {
 			case err != nil:

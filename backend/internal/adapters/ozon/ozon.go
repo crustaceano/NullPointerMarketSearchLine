@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
 
 	"github.com/PuerkitoBio/goquery"
@@ -44,7 +45,8 @@ func (a *Ozon) Search(ctx context.Context, query, region string) ([]models.Produ
 
 	log.Printf("Ozon search URL: %s, offers: %d", searchURL, len(offers))
 
-	return limitOffers(offers, ozonOfferLimit), nil
+	offers = limitOffers(offers, ozonOfferLimit)
+	return offers, nil
 }
 
 func buildOzonSearchURL(query string) string {
@@ -98,9 +100,10 @@ func parseOzonOffers(html []byte, region string) ([]models.ProductOffer, error) 
 			Price:    price,
 			Currency: "RUB",
 			URL:      productURL,
-			Characteristics: map[string]string{
-				"Регион": region,
-			},
+			Characteristics: shared.MergeCharacteristics(
+				ozonBaseCharacteristics(region),
+				ozonTitleCharacteristics(title),
+			),
 		})
 
 		seen[productURL] = true
@@ -189,9 +192,13 @@ func parseOzonStateOffers(doc *goquery.Document, region string) []models.Product
 				Price:    extractOzonStatePrice(item.MainState),
 				Currency: "RUB",
 				URL:      productURL,
-				Characteristics: map[string]string{
-					"Регион": region,
-				},
+				Characteristics: shared.MergeCharacteristics(
+					ozonBaseCharacteristics(region),
+					shared.MergeCharacteristics(
+						ozonTitleCharacteristics(title),
+						extractOzonStateCharacteristics(item.MainState),
+					),
+				),
 			})
 			seen[productURL] = true
 
@@ -235,6 +242,156 @@ func extractOzonStatePrice(states []ozonMainState) float64 {
 		}
 	}
 	return 0
+}
+
+func extractOzonStateCharacteristics(states []ozonMainState) map[string]string {
+	chars := map[string]string{}
+	for _, state := range states {
+		text := ""
+		if state.TextAtom != nil {
+			text = cleanText(html.UnescapeString(state.TextAtom.Text))
+		}
+		if text == "" {
+			continue
+		}
+
+		switch {
+		case state.ID == "brand":
+			chars["Бренд"] = text
+		case state.ID == "seller":
+			chars["Продавец"] = text
+		case strings.Contains(strings.ToLower(state.ID), "rating"):
+			chars["Рейтинг"] = text
+		case strings.Contains(strings.ToLower(state.ID), "delivery"):
+			chars["Доставка"] = text
+		case strings.Contains(strings.ToLower(text), "в наличии"):
+			chars["В наличии"] = "да"
+		}
+	}
+	return chars
+}
+
+func ozonBaseCharacteristics(region string) map[string]string {
+	return map[string]string{
+		"Регион":    region,
+		"Источник":  "Ozon",
+		"В наличии": "да",
+	}
+}
+
+func ozonTitleCharacteristics(title string) map[string]string {
+	title = cleanText(title)
+	lower := strings.ToLower(title)
+	chars := map[string]string{}
+
+	if brand := ozonBrandFromTitle(title); brand != "" {
+		chars["Бренд"] = brand
+	}
+	if ram, storage := ozonMemoryFromTitle(title); ram != "" || storage != "" {
+		if ram != "" {
+			chars["Оперативная память"] = ram
+		}
+		if storage != "" {
+			chars["Встроенная память"] = storage
+		}
+	}
+	if sim := ozonSIMFromTitle(title); sim != "" {
+		chars["SIM-карта"] = sim
+	}
+	if color := ozonColorFromTitle(lower); color != "" {
+		chars["Цвет"] = color
+	}
+	if cert := ozonCertificationFromTitle(title); cert != "" {
+		chars["Сертификация"] = cert
+	}
+
+	return chars
+}
+
+func ozonBrandFromTitle(title string) string {
+	words := strings.Fields(title)
+	for _, word := range words {
+		cleaned := strings.Trim(word, " ,.;:()[]")
+		if cleaned == "" {
+			continue
+		}
+		lower := strings.ToLower(cleaned)
+		if isOzonGenericTitleWord(lower) {
+			continue
+		}
+		if strings.Contains(lower, "/") || strings.ContainsAny(lower, "0123456789") {
+			continue
+		}
+		if !isKnownOzonBrand(lower) {
+			continue
+		}
+		return cleaned
+	}
+	return ""
+}
+
+func ozonMemoryFromTitle(title string) (string, string) {
+	re := regexp.MustCompile(`(?i)(\d{1,2})\s*/\s*(\d{2,4})\s*(гб|gb|г|g)`)
+	match := re.FindStringSubmatch(title)
+	if len(match) != 4 {
+		return "", ""
+	}
+	return match[1] + " ГБ", match[2] + " ГБ"
+}
+
+func ozonSIMFromTitle(title string) string {
+	re := regexp.MustCompile(`(?i)(eSIM(?:\s*\+\s*eSIM)?|Nano-SIM|Micro-SIM|Dual SIM|SIM)`)
+	match := re.FindString(title)
+	if match == "" {
+		return ""
+	}
+	return cleanText(match)
+}
+
+func ozonColorFromTitle(lowerTitle string) string {
+	colors := []string{
+		"черный",
+		"чёрный",
+		"белый",
+		"серый",
+		"синий",
+		"голубой",
+		"зеленый",
+		"зелёный",
+		"красный",
+		"розовый",
+		"фиолетовый",
+		"желтый",
+		"жёлтый",
+		"золотой",
+		"серебристый",
+		"прозрачный",
+	}
+	for _, color := range colors {
+		if strings.Contains(lowerTitle, color) {
+			return color
+		}
+	}
+	return ""
+}
+
+func ozonCertificationFromTitle(title string) string {
+	lower := strings.ToLower(title)
+	if strings.Contains(lower, strings.ToLower("Ростест (EAC)")) {
+		return "Ростест (EAC)"
+	}
+
+	markers := []string{"Ростест", "EAC", "Global"}
+	values := make([]string, 0, len(markers))
+	for _, marker := range markers {
+		if strings.Contains(lower, strings.ToLower(marker)) && !containsString(values, marker) {
+			values = append(values, marker)
+		}
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, ", ")
 }
 
 func extractOzonStateImage(tileImage ozonTileImage) string {
@@ -322,4 +479,50 @@ func extractPrice(text string) float64 {
 func cleanText(text string) string {
 	text = strings.Join(strings.Fields(text), " ")
 	return strings.TrimSpace(text)
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isOzonGenericTitleWord(word string) bool {
+	generic := map[string]struct{}{
+		"смартфон":  {},
+		"телефон":   {},
+		"мобильный": {},
+		"ноутбук":   {},
+		"планшет":   {},
+	}
+	_, ok := generic[word]
+	return ok
+}
+
+func isKnownOzonBrand(word string) bool {
+	brands := map[string]struct{}{
+		"apple":   {},
+		"asus":    {},
+		"google":  {},
+		"honor":   {},
+		"huawei":  {},
+		"infinix": {},
+		"itel":    {},
+		"lenovo":  {},
+		"nothing": {},
+		"nokia":   {},
+		"oneplus": {},
+		"oppo":    {},
+		"poco":    {},
+		"realme":  {},
+		"samsung": {},
+		"tecno":   {},
+		"vivo":    {},
+		"xiaomi":  {},
+	}
+	_, ok := brands[word]
+	return ok
 }

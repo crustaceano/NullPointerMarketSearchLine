@@ -14,6 +14,8 @@ import (
 	"nullpointer/backend/internal/models"
 )
 
+var ErrBlocked = errors.New("source returned anti-bot or captcha page")
+
 type HTMLFetcher interface {
 	Fetch(ctx context.Context, rawURL string) ([]byte, error)
 }
@@ -112,8 +114,14 @@ func (f *DefaultHTMLFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, 
 		chromedp.Navigate(rawURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second),
-		chromedp.Evaluate(`window.scrollBy(0, 1200)`, nil),
-		chromedp.Sleep(2*time.Second),
+		chromedp.Evaluate(`async () => {
+			for (let i = 0; i < 7; i++) {
+				window.scrollBy(0, Math.max(900, Math.floor(window.innerHeight * 0.85)));
+				await new Promise(resolve => setTimeout(resolve, 450));
+			}
+			window.scrollTo(0, 0);
+		}`, nil),
+		chromedp.Sleep(1500*time.Millisecond),
 		chromedp.OuterHTML("html", &htmlString, chromedp.ByQuery),
 	)
 
@@ -125,7 +133,7 @@ func (f *DefaultHTMLFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, 
 	body := []byte(htmlString)
 
 	if looksBlocked(body) {
-		return nil, errors.New("source returned anti-bot or captcha page")
+		return nil, ErrBlocked
 	}
 
 	return body, nil

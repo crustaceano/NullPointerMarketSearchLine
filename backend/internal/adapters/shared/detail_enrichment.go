@@ -18,6 +18,16 @@ type DetailEnrichmentConfig struct {
 	ShouldFetch func(rawURL string) bool
 	BuildURL    func(offer models.ProductOffer) string
 	Parse       func(page []byte) (map[string]string, error)
+	OnResult    func(DetailEnrichmentResult)
+}
+
+type DetailEnrichmentResult struct {
+	URL            string
+	Page           []byte
+	PageBytes      int
+	Characteristic int
+	FetchErr       error
+	ParseErr       error
 }
 
 func EnrichOfferDetails(ctx context.Context, fetcher HTMLFetcher, offers []models.ProductOffer, cfg DetailEnrichmentConfig) {
@@ -66,15 +76,35 @@ func EnrichOfferDetails(ctx context.Context, fetcher HTMLFetcher, offers []model
 
 			page, err := fetcher.Fetch(detailCtx, detailURL)
 			if err != nil {
+				reportDetailEnrichmentResult(cfg, DetailEnrichmentResult{URL: detailURL, FetchErr: err})
 				return
 			}
 			chars, err := cfg.Parse(page)
 			if err != nil || len(chars) == 0 {
+				reportDetailEnrichmentResult(cfg, DetailEnrichmentResult{
+					URL:            detailURL,
+					Page:           page,
+					PageBytes:      len(page),
+					Characteristic: len(chars),
+					ParseErr:       err,
+				})
 				return
 			}
+			reportDetailEnrichmentResult(cfg, DetailEnrichmentResult{
+				URL:            detailURL,
+				Page:           page,
+				PageBytes:      len(page),
+				Characteristic: len(chars),
+			})
 			offers[index].Characteristics = MergeCharacteristics(offers[index].Characteristics, chars)
 		}(i)
 	}
 
 	wg.Wait()
+}
+
+func reportDetailEnrichmentResult(cfg DetailEnrichmentConfig, result DetailEnrichmentResult) {
+	if cfg.OnResult != nil {
+		cfg.OnResult(result)
+	}
 }
