@@ -179,6 +179,63 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Эндпоинт: `POST /extract` с телом `{"query": "...", "category": "одежда|шины|оргтехника"}`. Универсальные лейблы и наборы под категорию — в `ml/entity_extractor.py` (`DEFAULT_LABELS`, `LABELS_BY_CATEGORY`).
 
+### ML: опциональный relevance scorer (cross-encoder)
+
+Считает скор релевантности пары **(текстовый запрос, JSON карточки товара)** в `[0, 1]`. Cross-encoder transformer, базовая модель — [`DiTy/cross-encoder-russian-msmarco`](https://huggingface.co/DiTy/cross-encoder-russian-msmarco) (~350 MB, distilbert, обучена под русский MS MARCO ranking). По умолчанию **выключен**.
+
+```bash
+cd ml
+pip install -r requirements.txt
+
+export SCORER_ENABLED=1
+export SCORER_DEVICE=cpu                                  # или cuda
+export SCORER_MODEL_ID=DiTy/cross-encoder-russian-msmarco # дефолт
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Эндпоинт: `POST /score` — принимает один запрос и **набор** карточек, скорит их одним батчем.
+
+```bash
+curl -s -X POST localhost:8000/score \
+  -H 'content-type: application/json' \
+  -d '{
+    "query": "летние шины 225/45 r17 michelin",
+    "products": [
+      {
+        "title": "Летние шины Michelin Pilot Sport 4 225/45 R17 91W",
+        "brand": "Michelin",
+        "category": "Шины",
+        "attributes": {"сезон": "летние", "размер": "225/45 R17"}
+      },
+      {
+        "title": "Зимние шипованные Nokian Hakkapeliitta 235/55 R19",
+        "brand": "Nokian",
+        "category": "Шины"
+      },
+      {
+        "title": "Принтер Brother HL-L2375",
+        "brand": "Brother",
+        "category": "Оргтехника"
+      }
+    ]
+  }'
+```
+
+Ответ (порядок исходного `products` сохраняется — клиент сам сортирует если надо):
+```json
+{
+  "raw": "...",
+  "corrected": "...",
+  "scored": [
+    { "index": 0, "score": 0.92, "product_text": "Летние шины Michelin..." },
+    { "index": 1, "score": 0.41, "product_text": "Зимние шипованные..." },
+    { "index": 2, "score": 0.03, "product_text": "Принтер Brother..." }
+  ]
+}
+```
+
+Из карточки извлекаются `title`/`name`, `brand`, `category`, `description`, `attributes`/`specs`/`characteristics` (как dict, так и list). Лишние поля игнорируются. `use_corrected: true` (дефолт) сначала прогоняет запрос через нормализатор.
+
 ### SymSpell: словарь частот
 
 Основной русский словарь: `ml/data/ru-100k.txt` (формат: `слово частота`, ~100k строк).  
