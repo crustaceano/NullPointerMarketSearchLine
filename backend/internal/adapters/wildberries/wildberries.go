@@ -10,6 +10,7 @@ import (
 
 	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
+	"nullpointer/backend/internal/regions"
 )
 
 const (
@@ -89,8 +90,7 @@ func wildberriesRequestContext(ctx context.Context, referer string) context.Cont
 }
 
 func wildberriesDest(region string) string {
-	// Moscow destination. Keep the function isolated so real region mapping can be added later.
-	return "-1257786"
+	return regions.WildberriesDest(region)
 }
 
 func decodeWildberriesJSON(page []byte, out any) error {

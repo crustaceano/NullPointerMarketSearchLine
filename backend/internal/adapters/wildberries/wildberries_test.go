@@ -102,6 +102,9 @@ func TestWildberriesSearchParsesOffers(t *testing.T) {
 	if !strings.Contains(fetcher.url, "query=%D0%BF%D0%B0%D0%BB%D1%8C%D1%82%D0%BE+%D0%B4%D0%B5%D1%82%D1%81%D0%BA%D0%BE%D0%B5") {
 		t.Fatalf("fetch url does not contain escaped query: %s", fetcher.url)
 	}
+	if !strings.Contains(fetcher.url, "dest=1259570991") {
+		t.Fatalf("fetch url does not contain Moscow dest: %s", fetcher.url)
+	}
 	if !strings.HasPrefix(fetcher.url, "https://u-search.wb.ru/exactmatch/ru/common/v18/search?") {
 		t.Fatalf("fetch url host = %s", fetcher.url)
 	}
@@ -233,5 +236,21 @@ func TestWildberriesBasketSupportsNewVolumeRanges(t *testing.T) {
 		if got := wildberriesBasket(vol); got != want {
 			t.Fatalf("wildberriesBasket(%d) = %q, want %q", vol, got, want)
 		}
+	}
+}
+
+func TestWildberriesSearchURLUsesRegionDest(t *testing.T) {
+	url := wildberriesSearchURL("ноутбук", "Санкт-Петербург")
+
+	if !strings.Contains(url, "dest=-1198055") {
+		t.Fatalf("url does not contain Saint Petersburg dest: %s", url)
+	}
+}
+
+func TestWildberriesSearchURLUsesExtendedRegionDest(t *testing.T) {
+	url := wildberriesSearchURL("ноутбук", "Могилёв")
+
+	if !strings.Contains(url, "dest=-82606") {
+		t.Fatalf("url does not contain Mogilev dest: %s", url)
 	}
 }

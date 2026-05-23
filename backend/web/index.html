@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NullPointer — поиск цен</title>
-  <link rel="stylesheet" href="/styles.css?v=20260523-2" />
+  <link rel="stylesheet" href="/styles.css?v=20260523-4" />
 </head>
 <body>
   <header class="topbar">
@@ -20,7 +20,40 @@
       </div>
       <div class="field">
         <label for="region">Регион</label>
-        <input id="region" name="region" type="text" value="Москва" />
+        <input id="region" name="region" type="text" value="Москва" list="region-options" autocomplete="off" />
+        <datalist id="region-options">
+          <option value="Москва"></option>
+          <option value="Санкт-Петербург"></option>
+          <option value="Вологда"></option>
+          <option value="Волгоград"></option>
+          <option value="Казань"></option>
+          <option value="Новосибирск"></option>
+          <option value="Екатеринбург"></option>
+          <option value="Нижний Новгород"></option>
+          <option value="Краснодар"></option>
+          <option value="Ростов-на-Дону"></option>
+          <option value="Самара"></option>
+          <option value="Уфа"></option>
+          <option value="Челябинск"></option>
+          <option value="Омск"></option>
+          <option value="Пермь"></option>
+          <option value="Воронеж"></option>
+          <option value="Саратов"></option>
+          <option value="Тюмень"></option>
+          <option value="Ижевск"></option>
+          <option value="Барнаул"></option>
+          <option value="Владивосток"></option>
+          <option value="Ярославль"></option>
+          <option value="Тула"></option>
+          <option value="Рязань"></option>
+          <option value="Калуга"></option>
+          <option value="Тверь"></option>
+          <option value="Смоленск"></option>
+          <option value="Курск"></option>
+          <option value="Белгород"></option>
+          <option value="Минск"></option>
+          <option value="Могилёв"></option>
+        </datalist>
       </div>
       <button type="submit" id="submit-btn">Искать</button>
     </form>
@@ -40,6 +73,6 @@
     <p id="status-line" class="status-line"></p>
   </main>
 
-  <script src="/app.js?v=20260523-2"></script>
+  <script src="/app.js?v=20260523-4"></script>
 </body>
 </html>
