@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"nullpointer/backend/internal/adapters/ozon"
 	"nullpointer/backend/internal/adapters/wildberries"
 	"nullpointer/backend/internal/adapters/yandex"
 	"nullpointer/backend/internal/models"
@@ -17,18 +18,23 @@ type SourceAdapter interface {
 
 // All returns the default set of adapters used by the service.
 func All() []SourceAdapter {
-	// 1. Создаем ваш базовый быстрый фетчер
+	// Общий fetcher для старых адаптеров, которые пока лежат в package adapters.
 	baseFetcher := NewHTMLFetcher(FetcherConfig{
 		Timeout: 6 * time.Second,
 	})
 
-	// 2. Оборачиваем его в систему автоматического обхода капчи через Chromium
 	smartFetcher := NewSmartAntiCaptchaFetcher(baseFetcher)
 
-	// 3. Передаем smartFetcher во ВСЕ маркетплейсы
+	// Отдельный fetcher только для Ozon.
+	ozonBaseFetcher := ozon.NewHTMLFetcher(ozon.FetcherConfig{
+		Timeout: 30 * time.Second,
+	})
+
+	ozonSmartFetcher := ozon.NewSmartAntiCaptchaFetcher(ozonBaseFetcher)
+
 	return []SourceAdapter{
 		yandex.NewMarket(smartFetcher),
-		NewOzon(smartFetcher),
+		ozon.NewOzon(ozonSmartFetcher),
 		wildberries.NewMarket(smartFetcher),
 		NewRunetSource(smartFetcher),
 	}
