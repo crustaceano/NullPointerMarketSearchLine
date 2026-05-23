@@ -13,3 +13,7 @@ torch>=2.0.0
 transformers>=4.36.0
 sentencepiece>=0.1.99
 safetensors>=0.4.0
+
+# Optional: GLiNER entity extraction (enable with GLINER_ENABLED=1).
+# При первом включении подтянет ~210MB весов с Hugging Face.
+gliner>=0.2.13

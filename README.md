@@ -161,6 +161,112 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Когда SAGE включён: правит **весь запрос целиком**, SymSpell по токенам **не вызывается** (чтобы не портить уже исправленный текст).
 
+### ML: опциональный GLiNER entity extractor
+
+Извлекает структурированные сущности (товар, бренд, цвет, размер, сезон, индекс шин и т.д.) из запроса. По умолчанию **выключен**. Базовая модель [`urchade/gliner_multi-v2.1`](https://huggingface.co/urchade/gliner_multi-v2.1) (~209M).
+
+```bash
+cd ml
+pip install -r requirements.txt
+
+export GLINER_ENABLED=1
+export GLINER_DEVICE=cpu                                  # или cuda
+export GLINER_MODEL_ID=urchade/gliner_multi-v2.1          # дефолт
+# либо локальный fine-tune:
+# export GLINER_MODEL_ID=ml/models/gliner-marketplace
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Эндпоинт: `POST /extract` с телом `{"query": "...", "category": "одежда|шины|оргтехника"}`. Универсальные лейблы и наборы под категорию — в `ml/entity_extractor.py` (`DEFAULT_LABELS`, `LABELS_BY_CATEGORY`).
+
+### ML: опциональный relevance scorer (NLI)
+
+Считает скор релевантности пары **(текстовый запрос, JSON карточки товара)** в `[0, 1]`. Под капотом — модель NLI: для пары `(premise=карточка, hypothesis=запрос)` предсказывает три класса: `entailment / neutral / contradiction`, и собирает скор:
+
+```
+score = 0.5 + 0.5 * (P(entailment) - P(contradiction))
+```
+
+Свойства: `entailment=1 → 1.0`, `neutral=1 → 0.5`, `contradiction=1 → 0.0`. Так пары, которые **не противоречат** запросу, всегда получают больший скор, чем противоречивые.
+
+Базовая модель — [`cointegrated/rubert-base-cased-nli-threeway`](https://huggingface.co/cointegrated/rubert-base-cased-nli-threeway) (~700 MB, RuBERT-base, обучена на русских NLI-датасетах). Карточки предполагаются на русском — multilingual mDeBERTa на CPU слишком медленная. По умолчанию **выключен**.
+
+```bash
+cd ml
+pip install -r requirements.txt
+
+export SCORER_ENABLED=1
+export SCORER_DEVICE=cpu                                          # или cuda
+export SCORER_MODEL_ID=cointegrated/rubert-base-cased-nli-threeway # дефолт
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Эндпоинт: `POST /score` — принимает один запрос и **набор** карточек, скорит их одним батчем.
+
+```bash
+curl -s -X POST localhost:8000/score \
+  -H 'content-type: application/json' \
+  -d '{
+    "query": "летние шины 225/45 r17 michelin",
+    "products": [
+      {
+        "title": "Летние шины Michelin Pilot Sport 4 225/45 R17 91W",
+        "brand": "Michelin",
+        "category": "Шины",
+        "attributes": {"сезон": "летние", "размер": "225/45 R17"}
+      },
+      {
+        "title": "Зимние шипованные Nokian Hakkapeliitta 235/55 R19",
+        "brand": "Nokian",
+        "category": "Шины"
+      },
+      {
+        "title": "Принтер Brother HL-L2375",
+        "brand": "Brother",
+        "category": "Оргтехника"
+      }
+    ]
+  }'
+```
+
+Ответ (порядок исходного `products` сохраняется — клиент сам сортирует если надо):
+```json
+{
+  "raw": "...",
+  "corrected": "...",
+  "scored": [
+    { "index": 0, "score": 0.92, "product_text": "Летние шины Michelin..." },
+    { "index": 1, "score": 0.41, "product_text": "Зимние шипованные..." },
+    { "index": 2, "score": 0.03, "product_text": "Принтер Brother..." }
+  ]
+}
+```
+
+Из карточки извлекаются `title`/`name`, `brand`, `category`, `description`, `attributes`/`specs`/`characteristics` (как dict, так и list). Лишние поля игнорируются. `use_corrected: true` (дефолт) сначала прогоняет запрос через нормализатор.
+
+#### Бенч и эвал качества
+
+Быстрый замер скорости (загрузит модель и прогонит несколько батчей):
+
+```bash
+python ml/scorer.py
+```
+
+Прогон на размеченных парах из `ml/data/scorer/golden.jsonl` (формат: `{group, query, product, label: "consistent"|"contradicts"}`):
+
+```bash
+python ml/eval_scorer.py                  # основной режим
+python ml/eval_scorer.py --print-failures # покажет где скорер промахнулся
+```
+
+Метрики:
+- `mean_consistent` / `mean_contradicts` — средние скоры по классам, разница между ними = `separation`.
+- `pairwise ranking acc` — главная метрика: внутри одной группы (один query, несколько карточек) для каждой пары `(consistent, contradicts)` проверяем, что `score(consistent) > score(contradicts)`. Это и есть «четкость сортировки».
+- `ROC-AUC` — глобальная по всему датасету.
+- `binary acc` — accuracy при пороге (по умолчанию 0.5).
+
+Размечать новые пары — просто дописывайте строки в `golden.jsonl`. Группы с одинаковым `query` склеиваются автоматически.
+
 ### SymSpell: словарь частот
 
 Основной русский словарь: `ml/data/ru-100k.txt` (формат: `слово частота`, ~100k строк).  
