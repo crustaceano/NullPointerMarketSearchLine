@@ -16,10 +16,12 @@ type SourceAdapter interface {
 
 // All returns the default set of adapters used by the service.
 func All() []SourceAdapter {
+	fetcher := NewHTMLFetcher(FetcherConfig{})
+
 	return []SourceAdapter{
-		NewYandexMarket(),
-		NewOzon(),
-		NewWildberries(),
-		NewRunetSource(),
+		NewYandexMarket(fetcher),
+		NewOzon(fetcher),
+		NewWildberries(fetcher),
+		NewRunetSource(fetcher),
 	}
 }
