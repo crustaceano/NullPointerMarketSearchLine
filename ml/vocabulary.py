@@ -27,8 +27,10 @@ def stopwords_filter_enabled() -> bool:
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DEFAULT_FREQ_FILE = DATA_DIR / "ru-100k.txt"
 
-DOMAIN_TERM_BOOST = 12_000
-DOMAIN_SYNONYM_BOOST = 9_000
+# Domain words must outrank any high-frequency Russian word from ru-100k.txt
+# (e.g. "футбол" has count ~125k there, "питер" ~5k+). Set boosts above this ceiling.
+DOMAIN_TERM_BOOST = 10_000_000
+DOMAIN_SYNONYM_BOOST = 5_000_000
 ZIPF_SCALE = 1_000
 
 
