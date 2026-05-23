@@ -10,6 +10,13 @@
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Go File" />
+      </list>
+    </option>
+  </component>
   <component name="GOROOT" url="file:///opt/homebrew/opt/go/libexec" />
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
@@ -29,6 +36,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "DefaultGoTemplateProperty": "Go File",
     "Go Test.TestParseYandexOffers in nullpointer/backend/internal/adapters.executor": "Run",
     "Go Test.TestParseYandexOffersWithDuplicateHrefBeforePrice in nullpointer/backend/internal/adapters.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
@@ -39,7 +47,6 @@
     "RunOnceActivity.go.modules.go.list.on.any.changes.was.set": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "SHELLCHECK.PATH": "/Users/kry4onok/Library/Application Support/JetBrains/GoLand2025.3/plugins/Shell Script/shellcheck",
-    "git-widget-placeholder": "main",
     "go.sdk.automatically.set": "true",
     "last_opened_file_path": "/Users/kry4onok/NullPointerMarketSearchLine",
     "node.js.detected.package.eslint": "true",

@@ -3,6 +3,7 @@
 Baseline для Tender Hack — интеллектуальный поиск цен по маркетплейсам Рунета.
 
 API-контракты между фронтендом, бэкендом и ML зафиксированы в [`API_CONTRACT.md`](API_CONTRACT.md).
+Описание текущего Yandex Market парсера лежит в [`PARSER_YANDEX.md`](PARSER_YANDEX.md).
 
 Стек:
 - **Backend** — Go 1.22+ (стандартная библиотека, без внешних зависимостей).
