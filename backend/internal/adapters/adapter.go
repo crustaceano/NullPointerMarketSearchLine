@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"nullpointer/backend/internal/adapters/wildberries"
 	"nullpointer/backend/internal/adapters/yandex"
 	"nullpointer/backend/internal/models"
 )
@@ -28,7 +29,7 @@ func All() []SourceAdapter {
 	return []SourceAdapter{
 		yandex.NewMarket(smartFetcher),
 		NewOzon(smartFetcher),
-		NewWildberries(smartFetcher),
+		wildberries.NewMarket(smartFetcher),
 		NewRunetSource(smartFetcher),
 	}
 }
