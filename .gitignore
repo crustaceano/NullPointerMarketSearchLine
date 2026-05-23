@@ -250,4 +250,4 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-*.pdf
+*.pdf.idea/workspace.xml
