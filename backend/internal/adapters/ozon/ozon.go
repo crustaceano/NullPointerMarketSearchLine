@@ -14,6 +14,7 @@ import (
 
 	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
+	"nullpointer/backend/internal/regions"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -31,7 +32,7 @@ func NewOzon(fetcher HTMLFetcher) *Ozon {
 func (a *Ozon) Name() string { return "Ozon" }
 
 func (a *Ozon) Search(ctx context.Context, query, region string) ([]models.ProductOffer, error) {
-	searchURL := buildOzonSearchURL(query)
+	searchURL := buildOzonSearchURL(query, region)
 
 	html, err := a.fetcher.Fetch(ctx, searchURL)
 	if err != nil {
@@ -49,9 +50,12 @@ func (a *Ozon) Search(ctx context.Context, query, region string) ([]models.Produ
 	return offers, nil
 }
 
-func buildOzonSearchURL(query string) string {
-	q := url.QueryEscape(strings.TrimSpace(query))
-	return "https://www.ozon.ru/search/?text=" + q
+func buildOzonSearchURL(query, region string) string {
+	values := url.Values{}
+	values.Set("text", strings.TrimSpace(query))
+	values.Set("from_global", "true")
+	values.Set("region", regions.Normalize(region))
+	return "https://www.ozon.ru/search/?" + values.Encode()
 }
 
 func parseOzonOffers(html []byte, region string) ([]models.ProductOffer, error) {

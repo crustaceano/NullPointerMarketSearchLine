@@ -97,6 +97,17 @@ func TestYandexMarketSearchParsesOffers(t *testing.T) {
 	if !strings.Contains(fetcher.url, "text=%D0%BD%D0%BE%D1%83%D1%82%D0%B1%D1%83%D0%BA") {
 		t.Fatalf("fetch url does not contain escaped query: %s", fetcher.url)
 	}
+	if !strings.Contains(fetcher.url, "lr=213") {
+		t.Fatalf("fetch url does not contain Moscow lr: %s", fetcher.url)
+	}
+}
+
+func TestYandexSearchURLUsesRegionLR(t *testing.T) {
+	url := yandexSearchURL("ноутбук", "Санкт-Петербург")
+
+	if !strings.Contains(url, "lr=2") {
+		t.Fatalf("url does not contain Saint Petersburg lr: %s", url)
+	}
 }
 
 func TestParseYandexMarketOffersDeduplicatesLinks(t *testing.T) {

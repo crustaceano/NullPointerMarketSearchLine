@@ -119,9 +119,7 @@ func parseSearchRequest(r *http.Request) (query, region string, err error) {
 	if query == "" {
 		return "", "", errMissingQuery
 	}
-	if region == "" {
-		region = "Москва"
-	}
+	region = normalizeRegion(region)
 	return query, region, nil
 }
 

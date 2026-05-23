@@ -59,11 +59,18 @@ main {
   margin-bottom: 4px;
 }
 
-.field input {
+.field input,
+.field select {
   padding: 10px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 15px;
+  background: white;
+}
+
+.field select {
+  min-width: 220px;
+  cursor: pointer;
 }
 
 .search-form button {
