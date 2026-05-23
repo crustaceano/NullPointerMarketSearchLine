@@ -7,13 +7,20 @@ pymorphy3-dicts-ru==2.4.417150.4580142
 wordfreq==3.1.1
 stop-words==2018.7.23
 
-# Optional: SAGE full-sentence spell checker (enable with SAGE_ENABLED=1)
-# First run downloads ~380MB model weights from Hugging Face.
+# Synonyms via RuWordNet thesaurus (~10MB sqlite db downloaded on first run:
+# `python -m ruwordnet download`).
+ruwordnet==0.0.6
+
+# Optional: NLI relevance scorer + /expand NLI filter (SCORER_ENABLED=1).
+# First run downloads ~700MB weights from Hugging Face.
 torch>=2.0.0
 transformers>=4.36.0
 sentencepiece>=0.1.99
 safetensors>=0.4.0
 
-# Optional: GLiNER entity extraction (enable with GLINER_ENABLED=1).
-# При первом включении подтянет ~210MB весов с Hugging Face.
+# Optional: SAGE full-sentence spell checker (SAGE_ENABLED=1).
+# First run downloads ~380MB model weights.
+
+# Optional: GLiNER entity extraction (GLINER_ENABLED=1).
+# First run downloads ~210MB weights.
 gliner>=0.2.13
