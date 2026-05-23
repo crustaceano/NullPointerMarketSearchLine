@@ -2,15 +2,16 @@ package adapters
 
 import (
 	"context"
+	"nullpointer/backend/internal/adapters/ozon"
 
 	"nullpointer/backend/internal/models"
 )
 
 type Wildberries struct {
-	fetcher HTMLFetcher
+	fetcher ozon.HTMLFetcher
 }
 
-func NewWildberries(fetcher HTMLFetcher) *Wildberries {
+func NewWildberries(fetcher ozon.HTMLFetcher) *Wildberries {
 	return &Wildberries{fetcher: fetcher}
 }
 

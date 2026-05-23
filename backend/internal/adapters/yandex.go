@@ -2,15 +2,16 @@ package adapters
 
 import (
 	"context"
+	"nullpointer/backend/internal/adapters/ozon"
 
 	"nullpointer/backend/internal/models"
 )
 
 type YandexMarket struct {
-	fetcher HTMLFetcher
+	fetcher ozon.HTMLFetcher
 }
 
-func NewYandexMarket(fetcher HTMLFetcher) *YandexMarket {
+func NewYandexMarket(fetcher ozon.HTMLFetcher) *YandexMarket {
 	return &YandexMarket{fetcher: fetcher}
 }
 

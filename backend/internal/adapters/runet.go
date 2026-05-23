@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"nullpointer/backend/internal/adapters/ozon"
 
 	"nullpointer/backend/internal/models"
 )
@@ -11,10 +12,10 @@ import (
 type RunetSource struct {
 	name    string
 	host    string
-	fetcher HTMLFetcher
+	fetcher ozon.HTMLFetcher
 }
 
-func NewRunetSource(fetcher HTMLFetcher) *RunetSource {
+func NewRunetSource(fetcher ozon.HTMLFetcher) *RunetSource {
 	return &RunetSource{name: "Citilink", host: "citilink.ru", fetcher: fetcher}
 }
 

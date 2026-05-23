@@ -2,13 +2,13 @@ package adapters
 
 import (
 	"context"
+	"nullpointer/backend/internal/adapters/ozon"
+	"time"
 
 	"nullpointer/backend/internal/models"
 )
 
 // SourceAdapter is the contract every product source (Yandex, Ozon, ...) implements.
-// Real HTTP/HTML parsers can later replace the mock implementations without
-// changing anything else in the pipeline.
 type SourceAdapter interface {
 	Name() string
 	Search(ctx context.Context, query string, region string) ([]models.ProductOffer, error)
@@ -16,12 +16,19 @@ type SourceAdapter interface {
 
 // All returns the default set of adapters used by the service.
 func All() []SourceAdapter {
-	fetcher := NewHTMLFetcher(FetcherConfig{})
+	// 1. Создаем ваш базовый быстрый фетчер
+	baseFetcher := ozon.NewHTMLFetcher(ozon.FetcherConfig{
+		Timeout: 30 * time.Second,
+	})
 
+	// 2. Оборачиваем его в систему автоматического обхода капчи через Chromium
+	smartFetcher := ozon.NewSmartAntiCaptchaFetcher(baseFetcher)
+
+	// 3. Передаем smartFetcher во ВСЕ маркетплейсы
 	return []SourceAdapter{
-		NewYandexMarket(fetcher),
-		NewOzon(fetcher),
-		NewWildberries(fetcher),
-		NewRunetSource(fetcher),
+		//yandex.NewMarket(smartFetcher),
+		ozon.NewOzon(smartFetcher),
+		NewWildberries(smartFetcher),
+		NewRunetSource(smartFetcher),
 	}
 }
