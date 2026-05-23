@@ -1,0 +1,44 @@
+{"group": "tires-season", "query": "летние шины 225/45 r17 michelin", "product": "Летние шины Michelin Pilot Sport 4 225/45 R17 91W", "label": "consistent"}
+{"group": "tires-season", "query": "летние шины 225/45 r17 michelin", "product": "Зимние шипованные шины Nokian Hakkapeliitta 9 225/45 R17", "label": "contradicts"}
+{"group": "tires-season", "query": "летние шины 225/45 r17 michelin", "product": "Зимняя нешипованная резина Bridgestone Blizzak 225/45 R17", "label": "contradicts"}
+
+{"group": "tires-stud", "query": "шипованные зимние шины", "product": "Зимние шипованные Nokian Hakkapeliitta 7 235/55 R19", "label": "consistent"}
+{"group": "tires-stud", "query": "шипованные зимние шины", "product": "Зимние нешипованные шины липучка Continental ContiVikingContact 195/65 R15", "label": "contradicts"}
+{"group": "tires-stud", "query": "шипованные зимние шины", "product": "Летние шины Pirelli Cinturato P7 205/55 R16", "label": "contradicts"}
+
+{"group": "tires-brand", "query": "шины michelin pilot sport", "product": "Шины Michelin Pilot Sport 4 245/40 R18 летние", "label": "consistent"}
+{"group": "tires-brand", "query": "шины michelin pilot sport", "product": "Шины Continental PremiumContact 6 245/40 R18 летние", "label": "contradicts"}
+
+{"group": "tires-size", "query": "шины 195/65 r15", "product": "Зимние шины Nokian 195/65 R15 91T", "label": "consistent"}
+{"group": "tires-size", "query": "шины 195/65 r15", "product": "Шины Michelin 225/45 R17", "label": "contradicts"}
+
+{"group": "clothing-color", "query": "белая футболка хлопок", "product": "Футболка мужская белая 100% хлопок размер L", "label": "consistent"}
+{"group": "clothing-color", "query": "белая футболка хлопок", "product": "Футболка мужская чёрная 100% хлопок размер L", "label": "contradicts"}
+{"group": "clothing-color", "query": "белая футболка хлопок", "product": "Футболка мужская красная синтетика размер L", "label": "contradicts"}
+
+{"group": "clothing-gender", "query": "мужская куртка зимняя", "product": "Зимняя мужская куртка пуховик Columbia чёрная", "label": "consistent"}
+{"group": "clothing-gender", "query": "мужская куртка зимняя", "product": "Зимняя женская куртка пуховик Columbia чёрная", "label": "contradicts"}
+{"group": "clothing-gender", "query": "мужская куртка зимняя", "product": "Летняя мужская ветровка Columbia", "label": "contradicts"}
+
+{"group": "clothing-season", "query": "пуховик зимний женский", "product": "Зимний женский пуховик Columbia с капюшоном размер M", "label": "consistent"}
+{"group": "clothing-season", "query": "пуховик зимний женский", "product": "Летний женский сарафан хлопковый розовый", "label": "contradicts"}
+
+{"group": "clothing-size", "query": "кроссовки nike air max 90 размер 43", "product": "Кроссовки Nike Air Max 90 белые мужские размер 43", "label": "consistent"}
+{"group": "clothing-size", "query": "кроссовки nike air max 90 размер 43", "product": "Кроссовки Adidas Stan Smith белые размер 43", "label": "contradicts"}
+
+{"group": "office-type", "query": "лазерный принтер brother", "product": "Лазерный принтер Brother HL-L2375DWR монохромный A4", "label": "consistent"}
+{"group": "office-type", "query": "лазерный принтер brother", "product": "Струйный принтер Canon Pixma G3411 цветной A4", "label": "contradicts"}
+{"group": "office-type", "query": "лазерный принтер brother", "product": "Термопринтер этикеток Zebra ZT230", "label": "contradicts"}
+
+{"group": "office-format", "query": "плоттер a0", "product": "Плоттер Epson SureColor SC-T3100 формата A0 для чертежей", "label": "consistent"}
+{"group": "office-format", "query": "плоттер a0", "product": "Принтер Canon Pixma A4 для дома", "label": "contradicts"}
+
+{"group": "office-monitor", "query": "монитор 27 дюймов ips", "product": "Монитор Dell UltraSharp 27 дюймов IPS 4K", "label": "consistent"}
+{"group": "office-monitor", "query": "монитор 27 дюймов ips", "product": "Монитор Samsung 24 дюйма VA для офиса", "label": "contradicts"}
+
+{"group": "office-wireless", "query": "беспроводная клавиатура apple", "product": "Apple Magic Keyboard беспроводная белая Bluetooth", "label": "consistent"}
+{"group": "office-wireless", "query": "беспроводная клавиатура apple", "product": "Logitech механическая проводная клавиатура USB", "label": "contradicts"}
+
+{"group": "cross-category", "query": "шины michelin", "product": "Шины Michelin Pilot Sport 4 225/45 R17", "label": "consistent"}
+{"group": "cross-category", "query": "шины michelin", "product": "Принтер Brother HL-L2375", "label": "contradicts"}
+{"group": "cross-category", "query": "шины michelin", "product": "Куртка зимняя мужская Columbia", "label": "contradicts"}

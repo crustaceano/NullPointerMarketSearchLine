@@ -179,17 +179,25 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 Эндпоинт: `POST /extract` с телом `{"query": "...", "category": "одежда|шины|оргтехника"}`. Универсальные лейблы и наборы под категорию — в `ml/entity_extractor.py` (`DEFAULT_LABELS`, `LABELS_BY_CATEGORY`).
 
-### ML: опциональный relevance scorer (cross-encoder)
+### ML: опциональный relevance scorer (NLI)
 
-Считает скор релевантности пары **(текстовый запрос, JSON карточки товара)** в `[0, 1]`. Cross-encoder transformer, базовая модель — [`DiTy/cross-encoder-russian-msmarco`](https://huggingface.co/DiTy/cross-encoder-russian-msmarco) (~350 MB, distilbert, обучена под русский MS MARCO ranking). По умолчанию **выключен**.
+Считает скор релевантности пары **(текстовый запрос, JSON карточки товара)** в `[0, 1]`. Под капотом — модель NLI: для пары `(premise=карточка, hypothesis=запрос)` предсказывает три класса: `entailment / neutral / contradiction`, и собирает скор:
+
+```
+score = 0.5 + 0.5 * (P(entailment) - P(contradiction))
+```
+
+Свойства: `entailment=1 → 1.0`, `neutral=1 → 0.5`, `contradiction=1 → 0.0`. Так пары, которые **не противоречат** запросу, всегда получают больший скор, чем противоречивые.
+
+Базовая модель — [`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7) (~560 MB, mDeBERTa-v3-base, обучена на 100+ языках на XNLI/MultiNLI/ANLI). Multilingual — чтобы карточки со смешанными русско-английскими полями (`brand: Michelin`, `сезон: летние`) работали без перевода. По умолчанию **выключен**.
 
 ```bash
 cd ml
 pip install -r requirements.txt
 
 export SCORER_ENABLED=1
-export SCORER_DEVICE=cpu                                  # или cuda
-export SCORER_MODEL_ID=DiTy/cross-encoder-russian-msmarco # дефолт
+export SCORER_DEVICE=cpu                                                          # или cuda
+export SCORER_MODEL_ID=MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7  # дефолт
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -235,6 +243,29 @@ curl -s -X POST localhost:8000/score \
 ```
 
 Из карточки извлекаются `title`/`name`, `brand`, `category`, `description`, `attributes`/`specs`/`characteristics` (как dict, так и list). Лишние поля игнорируются. `use_corrected: true` (дефолт) сначала прогоняет запрос через нормализатор.
+
+#### Бенч и эвал качества
+
+Быстрый замер скорости (загрузит модель и прогонит несколько батчей):
+
+```bash
+python ml/scorer.py
+```
+
+Прогон на размеченных парах из `ml/data/scorer/golden.jsonl` (формат: `{group, query, product, label: "consistent"|"contradicts"}`):
+
+```bash
+python ml/eval_scorer.py                  # основной режим
+python ml/eval_scorer.py --print-failures # покажет где скорер промахнулся
+```
+
+Метрики:
+- `mean_consistent` / `mean_contradicts` — средние скоры по классам, разница между ними = `separation`.
+- `pairwise ranking acc` — главная метрика: внутри одной группы (один query, несколько карточек) для каждой пары `(consistent, contradicts)` проверяем, что `score(consistent) > score(contradicts)`. Это и есть «четкость сортировки».
+- `ROC-AUC` — глобальная по всему датасету.
+- `binary acc` — accuracy при пороге (по умолчанию 0.5).
+
+Размечать новые пары — просто дописывайте строки в `golden.jsonl`. Группы с одинаковым `query` склеиваются автоматически.
 
 ### SymSpell: словарь частот
 

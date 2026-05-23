@@ -1,32 +1,52 @@
-"""Optional product relevance scorer (cross-encoder transformer, no API).
+"""Optional product relevance scorer based on NLI (no external API).
 
 Берёт пару (query, product_card) → выдаёт скор релевантности в [0, 1].
-Cross-encoder = одна BERT-подобная модель, в которую засовывается
-конкатенация запроса и текстового представления карточки. Точнее
-bi-encoder + cosine, ценой того что нельзя закешировать эмбеддинги.
+Под капотом — модель NLI (Natural Language Inference): для пары
+(premise=карточка товара, hypothesis=запрос) предсказывает три класса:
+entailment / neutral / contradiction.
 
-Базовая модель: DiTy/cross-encoder-russian-msmarco (~350 MB, distilbert,
-обучена под русский ranking на MS MARCO).
-https://huggingface.co/DiTy/cross-encoder-russian-msmarco
+Финальный скор:
+    score = 0.5 + 0.5 * (P(entailment) - P(contradiction))
+
+Свойства:
+  * entailment=1                       → 1.0  (пара точно согласована)
+  * neutral=1                          → 0.5  (нет ни связи, ни противоречия)
+  * contradiction=1                    → 0.0  (запрос противоречит карточке)
+  * непротиворечивые пары всегда ≥ противоречивых при равных prior'ах.
+
+Базовая модель: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+(~560 MB, mDeBERTa-v3-base, обучена на 100+ языках на XNLI/MultiNLI/ANLI
+и других NLI-датасетах). Multilingual специально, чтобы:
+  * терпимо относиться к смешанным карточкам (русские поля + английские
+    бренды/значения, либо полностью английские карточки);
+  * не зависеть от языка ключей JSON.
+https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+
+Скрипт-эвал на размеченных парах: `python ml/eval_scorer.py`.
 
 Включается через переменную окружения:
   SCORER_ENABLED=1
 Дополнительно:
   SCORER_DEVICE=cpu     (по умолчанию) или cuda
-  SCORER_MODEL_ID=DiTy/cross-encoder-russian-msmarco
-                  | BAAI/bge-reranker-base   (мультиязычный вариант)
-                  | <локальный путь>          (после fine-tune)
+  SCORER_MODEL_ID=MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7  (дефолт)
+                  | <другой NLI чекпоинт с label-ами entailment/contradiction>
+
+Если модель НЕ NLI (нет в id2label `entailment`/`contradiction`) — скорер
+переключается на fallback: sigmoid/softmax по выходному логиту, как
+обычный cross-encoder.
 """
 
 from __future__ import annotations
 
 import os
 import threading
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 
-MODEL_ID_DEFAULT = "DiTy/cross-encoder-russian-msmarco"
-_MAX_LEN_DEFAULT = 512
+MODEL_ID_DEFAULT = (
+    "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+)
+_MAX_LEN_DEFAULT = 256
 
 _load_lock = threading.Lock()
 _shared_instance: Optional["RelevanceScorer"] = None
@@ -41,83 +61,36 @@ def _env_enabled() -> bool:
     )
 
 
-def product_to_text(product: dict[str, Any]) -> str:
-    """Преобразует JSON карточки товара в плоский текст для cross-encoder.
+def product_to_text(product: Any) -> str:
+    """Произвольный JSON карточки → плоский текст `key: value` для NLI.
 
-    Терпимо относится к разным схемам — берёт любые из полей:
-        title / name / product_name
-        brand
-        category
-        description / desc
-        attributes / specs / characteristics / params / specifications
-        (dict {key: value} или list[{name|key, value|val}])
+    Рекурсивно обходит dict/list. Multilingual NLI терпит ключи на
+    любом языке, так что бизнес-логика про конкретные поля сюда не
+    лезет.
     """
-    parts: list[str] = []
-
-    title = (
-        product.get("title")
-        or product.get("name")
-        or product.get("product_name")
-    )
-    if title:
-        parts.append(str(title).strip())
-
-    brand = product.get("brand") or product.get("manufacturer")
-    if brand:
-        parts.append(f"Бренд: {brand}")
-
-    category = product.get("category") or product.get("category_name")
-    if category:
-        parts.append(f"Категория: {category}")
-
-    description = (
-        product.get("description")
-        or product.get("desc")
-        or product.get("short_description")
-    )
-    if description:
-        parts.append(str(description).strip())
-
-    for attrs_key in (
-        "attributes",
-        "specs",
-        "characteristics",
-        "params",
-        "specifications",
-        "properties",
-    ):
-        attrs = product.get(attrs_key)
-        if isinstance(attrs, dict):
-            for k, v in attrs.items():
-                rendered = _render_value(v)
-                if rendered:
-                    parts.append(f"{k}: {rendered}")
-        elif isinstance(attrs, list):
-            for item in attrs:
-                if isinstance(item, dict):
-                    name = item.get("name") or item.get("key") or item.get("title")
-                    val = item.get("value") or item.get("val")
-                    rendered = _render_value(val)
-                    if name and rendered:
-                        parts.append(f"{name}: {rendered}")
-
-    return ". ".join(p for p in parts if p)
+    return ". ".join(_iter_kv(product, prefix=""))
 
 
-def _render_value(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "да" if value else "нет"
-    if isinstance(value, (list, tuple, set)):
-        return ", ".join(str(x) for x in value if x not in (None, ""))
-    return str(value).strip()
+def _iter_kv(node: Any, prefix: str) -> Iterable[str]:
+    if isinstance(node, dict):
+        for k, v in node.items():
+            sub = f"{prefix}.{k}" if prefix else str(k)
+            yield from _iter_kv(v, sub)
+        return
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _iter_kv(item, prefix)
+        return
+    s = str(node).strip()
+    if not s:
+        return
+    yield f"{prefix}: {s}" if prefix else s
 
 
 class RelevanceScorer:
-    """Lazy-loaded cross-encoder для пары (query, product_text)."""
+    """Lazy-loaded NLI-based scorer для пары (query, product_text)."""
 
-    name = "cross-encoder-russian-msmarco"
+    name = "mdeberta-v3-base-xnli-multilingual"
 
     def __init__(
         self,
@@ -131,6 +104,9 @@ class RelevanceScorer:
         self._tokenizer = None
         self._model = None
         self._ready = False
+        # NLI-режим: индексы классов в выходных логитах. None = fallback.
+        self._idx_entail: Optional[int] = None
+        self._idx_contradict: Optional[int] = None
 
     def _ensure_loaded(self) -> bool:
         if self._ready:
@@ -149,7 +125,7 @@ class RelevanceScorer:
                 t0 = time.perf_counter()
                 print(
                     f"[scorer] загружаю {self.model_id} "
-                    f"(первый раз ~350 MB с huggingface)...",
+                    f"(первый раз ~560 MB с huggingface)...",
                     flush=True,
                 )
                 self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
@@ -161,9 +137,19 @@ class RelevanceScorer:
                 except Exception:
                     pass
                 self._model.eval()
+
+                self._idx_entail, self._idx_contradict = self._detect_nli_indices()
+                mode = (
+                    "NLI"
+                    if self._idx_entail is not None
+                    and self._idx_contradict is not None
+                    else "cross-encoder fallback"
+                )
+
                 self._ready = True
                 print(
-                    f"[scorer] модель загружена за {time.perf_counter() - t0:.1f}s",
+                    f"[scorer] модель загружена за "
+                    f"{time.perf_counter() - t0:.1f}s, режим: {mode}",
                     flush=True,
                 )
                 return True
@@ -171,9 +157,79 @@ class RelevanceScorer:
                 print(f"[scorer] не удалось загрузить модель: {exc}", flush=True)
                 return False
 
+    def _detect_nli_indices(self) -> tuple[Optional[int], Optional[int]]:
+        """Найти индексы классов entailment / contradiction в выходных логитах.
+
+        Использует id2label из конфига модели (HF NLI-чекпоинты его всегда
+        задают). Поддерживает разные написания: ENTAILMENT, entail, и т.д.
+        """
+        cfg = getattr(self._model, "config", None)
+        id2label = getattr(cfg, "id2label", None) if cfg is not None else None
+        if not id2label:
+            return None, None
+
+        idx_entail: Optional[int] = None
+        idx_contradict: Optional[int] = None
+        for raw_id, raw_label in id2label.items():
+            try:
+                idx = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            label = str(raw_label).strip().lower()
+            if "entail" in label:
+                idx_entail = idx
+            elif "contradict" in label:
+                idx_contradict = idx
+        return idx_entail, idx_contradict
+
     @property
     def loaded(self) -> bool:
         return self._ready
+
+    @property
+    def is_nli(self) -> bool:
+        return (
+            self._idx_entail is not None and self._idx_contradict is not None
+        )
+
+    def _logits_to_scores(self, logits) -> list[float]:
+        """logits → list[float] в [0, 1]. NLI или fallback по форме."""
+        import torch
+
+        if self.is_nli:
+            probs = torch.softmax(logits, dim=-1)
+            p_ent = probs[..., self._idx_entail]
+            p_con = probs[..., self._idx_contradict]
+            scores = 0.5 + 0.5 * (p_ent - p_con)
+            return [float(v) for v in scores.tolist()]
+
+        # Fallback под произвольный cross-encoder.
+        if logits.shape[-1] == 1:
+            return [float(v) for v in torch.sigmoid(logits.squeeze(-1)).tolist()]
+        probs = torch.softmax(logits, dim=-1)
+        return [float(v) for v in probs[..., -1].tolist()]
+
+    def _tokenize_pairs(self, query: str, passages: list[str]):
+        """Готовит batch к forward.
+
+        Для NLI: premise = карточка, hypothesis = запрос — порядок
+        (passage, query). Для обычного cross-encoder привычный (query, passage).
+        """
+        assert self._tokenizer is not None
+        n = len(passages)
+        queries = [query] * n
+        if self.is_nli:
+            text_a, text_b = passages, queries
+        else:
+            text_a, text_b = queries, passages
+        return self._tokenizer(
+            text_a,
+            text_b,
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+        )
 
     def score(self, query: str, passage: str) -> Optional[float]:
         """Скор релевантности пары (query, passage) ∈ [0, 1].
@@ -181,46 +237,10 @@ class RelevanceScorer:
         Если passage пустой — возвращает 0. Если модель не загрузилась —
         возвращает None (вызывающий должен это обработать).
         """
-        q = (query or "").strip()
-        p = (passage or "").strip()
-        if not q or not p:
-            return 0.0
-        if not self._ensure_loaded():
+        result = self.score_many(query, [passage])
+        if result is None:
             return None
-
-        try:
-            import torch
-
-            assert self._tokenizer is not None
-            assert self._model is not None
-
-            inputs = self._tokenizer(
-                q,
-                p,
-                padding=True,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
-            )
-            try:
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            except Exception:
-                pass
-
-            with torch.inference_mode():
-                logits = self._model(**inputs).logits
-
-            # Cross-encoder может выдавать 1 logit (sigmoid → [0,1])
-            # либо 2 (softmax → берем класс "релевантно").
-            if logits.shape[-1] == 1:
-                value = torch.sigmoid(logits.squeeze(-1)).item()
-            else:
-                probs = torch.softmax(logits, dim=-1)
-                value = probs[..., -1].item()
-            return float(value)
-        except Exception as exc:
-            print(f"[scorer] inference failed: {exc}", flush=True)
-            return None
+        return result[0]
 
     def score_many(
         self, query: str, passages: list[str]
@@ -253,14 +273,7 @@ class RelevanceScorer:
             assert self._tokenizer is not None
             assert self._model is not None
 
-            inputs = self._tokenizer(
-                [q] * len(keep_passages),
-                keep_passages,
-                padding=True,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
-            )
+            inputs = self._tokenize_pairs(q, keep_passages)
             try:
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
             except Exception:
@@ -269,15 +282,9 @@ class RelevanceScorer:
             with torch.inference_mode():
                 logits = self._model(**inputs).logits
 
-            if logits.shape[-1] == 1:
-                values = torch.sigmoid(logits.squeeze(-1)).tolist()
-            else:
-                values = torch.softmax(logits, dim=-1)[..., -1].tolist()
-
-            if not isinstance(values, list):
-                values = [values]
+            values = self._logits_to_scores(logits)
             for idx, v in zip(keep_idx, values):
-                results[idx] = float(v)
+                results[idx] = v
             return results
         except Exception as exc:
             print(f"[scorer] batch inference failed: {exc}", flush=True)
@@ -295,22 +302,49 @@ def get_shared_scorer() -> Optional[RelevanceScorer]:
 
 
 if __name__ == "__main__":
-    # Простой бенч: python ml/scorer.py
+    # Простой бенч + sanity-check NLI: `python ml/scorer.py`
     import time
 
     QUERY = "летние шины 225/45 r17 michelin"
-    PRODUCTS = [
-        "Летние шины Michelin Pilot Sport 4 225/45 R17 91W. Бренд: Michelin",
-        "Зимние шипованные Nokian Hakkapeliitta 235/55 R19 105T",
-        "Continental WinterContact TS 870 195/65 R15. Бренд: Continental",
-        "Принтер Brother HL-L2375DWR. Бренд: Brother. Категория: Оргтехника",
-        "Куртка мужская зимняя пуховик чёрная Columbia",
+    # Намеренно разные схемы карточек — должно работать без хардкода.
+    PRODUCTS_JSON: list[dict[str, Any]] = [
+        # ↓ согласованная: вложенные attributes на русском
+        {
+            "title": "Michelin Pilot Sport 4 225/45 R17 91W",
+            "brand": "Michelin",
+            "attributes": {"сезон": "летние", "размер": "225/45 R17"},
+        },
+        # ↓ согласованная: всё на английском
+        {
+            "name": "Summer tyres Michelin",
+            "specs": [
+                {"name": "season", "value": "summer"},
+                {"name": "size", "value": "225/45 R17"},
+            ],
+        },
+        # ↓ противоречит: зимние шипы
+        {
+            "title": "Nokian Hakkapeliitta 9",
+            "category": "Шины",
+            "characteristics": {"сезон": "зимние", "шипы": True},
+        },
+        # ↓ противоречит: липучка зимняя
+        {
+            "title": "Bridgestone Blizzak",
+            "params": {"season": "winter", "studded": False},
+        },
+        # ↓ из другой категории
+        {"title": "Brother HL-L2375DWR", "category": "Лазерный принтер"},
+        {"title": "Columbia мужской пуховик", "color": "чёрный"},
     ]
 
     sc = RelevanceScorer()
     t0 = time.perf_counter()
     sc._ensure_loaded()  # noqa: SLF001
-    print(f"load: {time.perf_counter() - t0:.1f}s\n")
+    print(f"load: {time.perf_counter() - t0:.1f}s")
+    print(f"nli mode: {sc.is_nli}\n")
+
+    PRODUCTS = [product_to_text(p) for p in PRODUCTS_JSON]
 
     sc.score_many(QUERY, PRODUCTS)  # warmup
     n = 5
@@ -321,12 +355,10 @@ if __name__ == "__main__":
     pairs = len(PRODUCTS)
 
     print(f"query: {QUERY!r}")
-    print(f"batch: {pairs} продуктов")
     print(
-        f"avg:   {elapsed * 1000:.1f} ms / батч  "
-        f"({elapsed / pairs * 1000:.1f} ms / пара, "
-        f"≈{pairs / elapsed:.1f} пар/с)\n"
+        f"batch={pairs}  avg={elapsed * 1000:.1f} ms  "
+        f"per-pair={elapsed / pairs * 1000:.1f} ms  ≈{pairs / elapsed:.1f} pairs/s\n"
     )
-    print("scores (последний прогон):")
+    print("scores:")
     for s, p in zip(scores or [], PRODUCTS):
-        print(f"  {s:.3f}  {p[:70]}")
+        print(f"  {s:.3f}  {p[:80]}")
