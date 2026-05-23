@@ -8,14 +8,26 @@ backend-команды.
 Основные файлы:
 
 ```text
-backend/internal/adapters/yandex.go
-backend/internal/adapters/yandex_test.go
+backend/internal/adapters/adapter.go                 # registry: подключает все источники
+backend/internal/adapters/fetcher.go                 # HTTP fetcher implementation
+backend/internal/adapters/shared/parse_helpers.go    # reusable parser helpers
+backend/internal/adapters/shared/detail_enrichment.go # reusable detail-page enrichment
+backend/internal/adapters/yandex/yandex.go           # adapter/Search orchestration
+backend/internal/adapters/yandex/yandex_dom.go       # DOM parser for search results
+backend/internal/adapters/yandex/yandex_apiary.go    # embedded Apiary JSON fallback
+backend/internal/adapters/yandex/yandex_details.go   # product page characteristics
+backend/internal/adapters/yandex/yandex_helpers.go   # Yandex-specific helpers
+backend/internal/adapters/yandex/yandex_test.go
 backend/internal/handlers/filter.go
 backend/internal/handlers/filter_test.go
-backend/internal/adapters/fetcher.go
 ```
 
-`YandexMarket` реализует общий контракт адаптера:
+Пакет `adapters` не содержит логику Yandex-парсинга. Он только создает общий
+fetcher и регистрирует источники. Пакет `adapters/yandex` реализует источник и
+зависит от `adapters/shared`, но не импортирует родительский `adapters`, чтобы
+не получить import cycle.
+
+`yandex.YandexMarket` реализует общий контракт адаптера:
 
 ```go
 Search(ctx context.Context, query string, region string) ([]models.ProductOffer, error)
@@ -33,6 +45,7 @@ Frontend raw_query
   -> Backend берет normalization.corrected
   -> YandexMarket.Search(corrected, region)
   -> HTMLFetcher.Fetch(searchURL)
+  -> embedded Apiary JSON parsing
   -> goquery DOM parsing
   -> []ProductOffer
   -> backend relevance + quality filter
@@ -55,15 +68,39 @@ URL строится так:
 https://market.yandex.ru/search?text=<query>&cvredirect=0
 ```
 
-`HTMLFetcher` добавляет browser-like headers и проверяет очевидные anti-bot /
-captcha страницы. Обход капчи не реализован. Если источник реально вернул
-капчу, адаптер должен вернуть ошибку только по этому источнику.
+Сетевая загрузка и обработка ошибок источника вынесены в общий fetcher. Сам
+парсер занимается только извлечением товаров из HTML, который вернул fetcher.
 
 ## DOM parsing
 
 Для HTML используется `goquery`. Основной принцип: сначала ищем узкие
 селекторы, regex используем только внутри выбранных DOM-узлов, чтобы вытащить
 число цены, рейтинга или отзывов.
+
+Перед DOM-парсингом парсер дополнительно читает embedded JSON из блоков:
+
+```html
+<noframes data-apiary="patch">...</noframes>
+```
+
+В этих JSON-патчах Яндекс часто хранит данные карточек для frontend-а:
+
+```text
+@light/AddToCartButton
+@marketfront/SnippetConstructor/SimpleGallery/ImageManager
+```
+
+Из `AddToCartButton` берутся `name`, `price.valueFmt`, `currency`, `count`,
+`quantityMaximum`, `imageMeta`. Из `ImageManager` берется `baseUrl` первой
+картинки. Эти данные используются как fallback/enrichment: если DOM-карточка
+найдена, но в ней нет цены или картинки, парсер добирает их из Apiary JSON.
+Если DOM-селекторы карточек сломались, парсер может вернуть карточки только по
+Apiary JSON.
+
+Важное ограничение: Apiary cart payload не содержит стабильную человекочитаемую
+ссылку на карточку товара. Поэтому точная ссылка по-прежнему берется из DOM.
+Если DOM-ссылки нет, fallback-ссылка строится как поиск по точному названию
+товара на `market.yandex.ru`.
 
 Карточки товара ищутся по:
 
@@ -212,10 +249,35 @@ data-auto
 Регион
 Источник
 В наличии
+Остаток
 Рейтинг
 Отзывы
 Доставка
+характеристики со страницы товара: Бренд, Тип, Процессор, Оперативная память,
+Диагональ экрана и т.д.
 ```
+
+После парсинга выдачи `YandexMarket.Search` ограничивает результат до 8
+товаров и для каждого товара с URL вида `/card/...` или `/product--...`
+пытается загрузить страницу товара. Это enrichment-этап: если страница товара
+не загрузилась или не распарсилась, карточка не падает, а остается с
+характеристиками из выдачи.
+
+Detail-page enrichment идет параллельно с лимитом конкурентности `3` и
+таймаутом `5s` на карточку. Максимум добавляется 18 характеристик, чтобы
+фронт не раздувал карточку слишком сильно.
+
+На странице товара характеристики ищутся по:
+
+```css
+[data-auto="product-full-specs"] [data-auto="product-spec"]
+[data-auto="specs-list-fullExtended"] [data-auto="product-spec"]
+[data-auto="specs-list-minimal"] [data-auto="product-spec"]
+[data-zone-name="fullSpecs"] [data-auto="product-spec"]
+```
+
+`Артикул Маркета`, `Код товара`, `Модель на Маркете` не выводятся как
+пользовательские характеристики.
 
 `В наличии: да` ставится, если в availability/delivery/button узлах или в
 тексте карточки есть признаки:
@@ -407,4 +469,3 @@ Backend ранжирует по availability/rating/reviews/delivery
 * **Эффективность против банов:** Полная имитация человеческого поведения сводит вероятность появления капчи практически к нулю.
 * **Потребление ресурсов:** Минимальное. Браузер запускается в режиме `Headless` (без графического интерфейса), не рендерит картинки и большую часть времени находится в спящем режиме.
 * **Enterprise-ready показатели:** Архитектура позволяет легко масштабировать решение. Для защиты от банов по IP-адресу (Rate Limiting) в созданный фетчер заложена техническая возможность интеграции ротации резидентских прокси по алгоритму *Round-Robin* без изменения бизнес-логики парсеров.
-

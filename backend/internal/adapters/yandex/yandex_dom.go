@@ -1,19 +1,15 @@
-package adapters
+package yandex
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
 )
-
-const yandexMarketHost = "https://market.yandex.ru"
 
 var (
 	yandexPriceRe      = regexp.MustCompile(`([0-9][0-9\s]{2,12})\s*₽`)
@@ -39,45 +35,9 @@ var (
 	}
 )
 
-type YandexMarket struct {
-	fetcher HTMLFetcher
-}
-
-func NewYandexMarket(fetcher HTMLFetcher) *YandexMarket {
-	return &YandexMarket{fetcher: fetcher}
-}
-
-func (a *YandexMarket) Name() string { return "Yandex Market" }
-
-func (a *YandexMarket) Search(ctx context.Context, query, region string) ([]models.ProductOffer, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return nil, nil
-	}
-
-	page, err := a.fetcher.Fetch(ctx, yandexSearchURL(query))
-	if err != nil {
-		return nil, fmt.Errorf("yandex market fetch: %w", err)
-	}
-
-	offers, err := parseYandexMarketOffers(page, region)
-	if err != nil {
-		return nil, err
-	}
-	if len(offers) == 0 {
-		return nil, errors.New("yandex market returned no parsable offers")
-	}
-	return limitOffers(offers, 8), nil
-}
-
-func yandexSearchURL(query string) string {
-	values := url.Values{}
-	values.Set("text", query)
-	values.Set("cvredirect", "0")
-	return yandexMarketHost + "/search?" + values.Encode()
-}
-
 func parseYandexMarketOffers(page []byte, region string) ([]models.ProductOffer, error) {
+	apiaryOffers := parseYandexApiaryOffers(page, region)
+
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(page)))
 	if err != nil {
 		return nil, fmt.Errorf("parse yandex market html: %w", err)
@@ -86,12 +46,16 @@ func parseYandexMarketOffers(page []byte, region string) ([]models.ProductOffer,
 	var offers []models.ProductOffer
 	seen := map[string]struct{}{}
 
-	doc.Find(`article[data-auto="searchOrganic"], div[data-zone-name="productSnippet"]`).Each(func(_ int, card *goquery.Selection) {
+	doc.Find(`article[data-auto="searchOrganic"], div[data-zone-name="productSnippet"]`).Each(func(cardIndex int, card *goquery.Selection) {
 		if len(offers) >= 12 {
 			return
 		}
 
+		apiaryOffer := yandexApiaryOfferAt(apiaryOffers, cardIndex)
 		cardURL := firstYandexProductURL(card)
+		if cardURL == "" {
+			cardURL = apiaryOffer.URL
+		}
 		if cardURL == "" {
 			return
 		}
@@ -104,24 +68,37 @@ func parseYandexMarketOffers(page []byte, region string) ([]models.ProductOffer,
 		}
 
 		title := firstYandexTitle(card)
+		if title == "" {
+			title = apiaryOffer.Title
+		}
 
 		price := firstYandexPrice(card)
+		if price <= 0 {
+			price = apiaryOffer.Price
+		}
 		if title == "" || price <= 0 {
 			return
 		}
+
+		image := firstYandexImage(card)
+		if image == "" {
+			image = apiaryOffer.Image
+		}
+		characteristics := shared.MergeCharacteristics(yandexCharacteristics(card, region), apiaryOffer.Characteristics)
 
 		seen[cardURL] = struct{}{}
 		offers = append(offers, models.ProductOffer{
 			Source:          "Yandex Market",
 			Title:           title,
-			Image:           firstYandexImage(card),
+			Image:           image,
 			Price:           price,
 			Currency:        "RUB",
 			URL:             cardURL,
-			Characteristics: yandexCharacteristics(card, region),
+			Characteristics: characteristics,
 		})
 	})
 
+	offers = appendYandexApiaryFallbacks(offers, apiaryOffers)
 	return offers, nil
 }
 
@@ -147,12 +124,9 @@ func hasUnavailableMarker(text string) bool {
 }
 
 func yandexCharacteristics(card *goquery.Selection, region string) map[string]string {
-	text := cleanText(card.Text())
+	text := shared.CleanText(card.Text())
 	lower := strings.ToLower(text)
-	chars := map[string]string{
-		"Регион":   region,
-		"Источник": "Yandex Market",
-	}
+	chars := yandexBaseCharacteristics(region)
 
 	if looksAvailableCard(card, lower) {
 		chars["В наличии"] = "да"
@@ -199,12 +173,12 @@ func selectedYandexTexts(card *goquery.Selection, selectors []string) []string {
 	var out []string
 	for _, selector := range selectors {
 		card.Find(selector).Each(func(_ int, node *goquery.Selection) {
-			if text := cleanText(node.Text()); text != "" {
+			if text := shared.CleanText(node.Text()); text != "" {
 				out = append(out, text)
 			}
 			for _, attr := range []string{"aria-label", "title", "data-auto"} {
 				if value, ok := node.Attr(attr); ok {
-					if cleaned := cleanText(value); cleaned != "" {
+					if cleaned := shared.CleanText(value); cleaned != "" {
 						out = append(out, cleaned)
 					}
 				}
@@ -339,7 +313,7 @@ func extractYandexDelivery(text string) string {
 	if len(match) < 2 {
 		return ""
 	}
-	delivery := cleanText(match[1])
+	delivery := shared.CleanText(match[1])
 	if len([]rune(delivery)) > 80 {
 		return string([]rune(delivery)[:80])
 	}
@@ -374,10 +348,10 @@ func firstYandexTitle(card *goquery.Selection) string {
 
 	for _, selector := range selectors {
 		node := card.Find(selector).First()
-		title := cleanText(node.Text())
+		title := shared.CleanText(node.Text())
 		if title == "" {
 			title, _ = node.Attr("alt")
-			title = cleanText(title)
+			title = shared.CleanText(title)
 		}
 		if title != "" {
 			return title
@@ -390,7 +364,7 @@ func firstYandexImage(card *goquery.Selection) string {
 	img := card.Find(`img[src*="get-mpic"], img[src*="avatars.mds.yandex.net"], img`).First()
 	for _, attr := range []string{"src", "data-src"} {
 		if value, ok := img.Attr(attr); ok {
-			if out := absoluteYandexAssetURL(value); out != "" {
+			if out := normalizeYandexImageURL(value); out != "" {
 				return out
 			}
 		}
@@ -398,7 +372,7 @@ func firstYandexImage(card *goquery.Selection) string {
 	if srcset, ok := img.Attr("srcset"); ok {
 		first := strings.Fields(strings.Split(srcset, ",")[0])
 		if len(first) > 0 {
-			return absoluteYandexAssetURL(first[0])
+			return normalizeYandexImageURL(first[0])
 		}
 	}
 	return ""
@@ -415,42 +389,4 @@ func extractYandexPrice(text string) float64 {
 		return 0
 	}
 	return price
-}
-
-func absoluteYandexURL(href string) string {
-	href = strings.TrimSpace(href)
-	if href == "" || strings.HasPrefix(href, "#") {
-		return ""
-	}
-	if strings.HasPrefix(href, "//") {
-		return "https:" + href
-	}
-	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
-		return href
-	}
-	if strings.HasPrefix(href, "/") {
-		return yandexMarketHost + href
-	}
-	return yandexMarketHost + "/" + href
-}
-
-func absoluteYandexAssetURL(src string) string {
-	src = strings.TrimSpace(src)
-	if src == "" {
-		return ""
-	}
-	if strings.HasPrefix(src, "//") {
-		return "https:" + src
-	}
-	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
-		return src
-	}
-	if strings.HasPrefix(src, "/") {
-		return yandexMarketHost + src
-	}
-	return src
-}
-
-func cleanText(text string) string {
-	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
 }

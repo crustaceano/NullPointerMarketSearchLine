@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"nullpointer/backend/internal/models"
+	"nullpointer/backend/internal/adapters/shared"
 )
 
 const (
@@ -18,9 +18,7 @@ const (
 )
 
 // HTMLFetcher is the shared contract for HTML-based source parsers.
-type HTMLFetcher interface {
-	Fetch(ctx context.Context, rawURL string) ([]byte, error)
-}
+type HTMLFetcher = shared.HTMLFetcher
 
 type FetcherConfig struct {
 	Timeout      time.Duration
@@ -137,11 +135,4 @@ func looksBlocked(body []byte) bool {
 		}
 	}
 	return false
-}
-
-func limitOffers(offers []models.ProductOffer, limit int) []models.ProductOffer {
-	if limit <= 0 || len(offers) <= limit {
-		return offers
-	}
-	return offers[:limit]
 }
