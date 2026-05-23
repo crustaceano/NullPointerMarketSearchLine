@@ -39,7 +39,7 @@ func (h *SearchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		searchQuery = query
 	}
 
-	sources := h.fanOut(ctx, searchQuery, region)
+	sources := h.fanOut(ctx, searchQuery, region, norm)
 
 	resp := models.SearchResponse{
 		Query:         query,
@@ -56,7 +56,7 @@ func (h *SearchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // fanOut queries all adapters in parallel and collects per-source results.
 // A failure in one adapter never breaks the response from the others.
-func (h *SearchHandler) fanOut(ctx context.Context, query, region string) []models.SourceResult {
+func (h *SearchHandler) fanOut(ctx context.Context, query, region string, norm models.Normalization) []models.SourceResult {
 	results := make([]models.SourceResult, len(h.Adapters))
 	var wg sync.WaitGroup
 
@@ -76,6 +76,9 @@ func (h *SearchHandler) fanOut(ctx context.Context, query, region string) []mode
 			}()
 
 			offers, err := a.Search(ctx, query, region)
+			if err == nil {
+				offers = filterRelevantOffers(offers, norm)
+			}
 			res := models.SourceResult{Source: a.Name(), Offers: []models.ProductOffer{}}
 			switch {
 			case err != nil:

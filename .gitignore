@@ -243,11 +243,15 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
-
+.gocache/
+.idea/
 # env file
 .env
 
 # Editor/IDE
 # .idea/
 # .vscode/
+*.pdf.idea/workspace.xml
+
 *.pdf
+.idea

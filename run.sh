@@ -4,6 +4,27 @@
 # Linux/macOS/Git Bash on Windows. On Windows use: source .venv/Scripts/activate
 set -euo pipefail
 
+cd "$(dirname "$0")"
+
+PYTHON_BIN="${PYTHON_BIN:-python3.12}"
+ML_DIR="./ml"
+VENV_DIR="$ML_DIR/.venv"
+
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "Error: $PYTHON_BIN not found."
+  echo "Install Python 3.12 or run with: PYTHON_BIN=/path/to/python3.12 ./run.sh"
+  exit 1
+fi
+
+if [ ! -d "$VENV_DIR" ]; then
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
+fi
+
+source "$VENV_DIR/bin/activate"
+
+python -m pip install -U pip setuptools wheel
+pip install -r "$ML_DIR/requirements.txt"
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 if ! command -v go >/dev/null 2>&1; then
