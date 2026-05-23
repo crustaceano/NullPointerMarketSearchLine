@@ -1,0 +1,47 @@
+services:
+  ml:
+    build:
+      context: .
+      dockerfile: ml/Dockerfile
+    environment:
+      SAGE_ENABLED: "0"
+      GLINER_ENABLED: "0"
+      SCORER_ENABLED: "0"
+      LM_FILTER_ENABLED: "0"
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+    ports:
+      - "8000:8000"
+    volumes:
+      - ml-cache:/cache
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ADDR: ":8080"
+      ML_URL: "http://ml:8000"
+      WEB_DIR: "/app/web"
+      ROD_BROWSER_BIN: "/usr/bin/chromium"
+      CHROME_BIN: "/usr/bin/chromium"
+    ports:
+      - "8080:8080"
+    shm_size: "1gb"
+    depends_on:
+      ml:
+        condition: service_healthy
+
+volumes:
+  ml-cache:

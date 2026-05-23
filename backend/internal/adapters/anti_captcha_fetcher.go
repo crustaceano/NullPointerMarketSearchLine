@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,12 +25,15 @@ type SmartAntiCaptchaFetcher struct {
 }
 
 func NewSmartAntiCaptchaFetcher(base *DefaultHTMLFetcher) *SmartAntiCaptchaFetcher {
-	u := launcher.New().
+	l := launcher.New().
 		Headless(true).
 		NoSandbox(true).
 		Append("disable-gpu", "").
-		Append("disable-extensions", "").
-		MustLaunch()
+		Append("disable-extensions", "")
+	if browserBin := rodBrowserBin(); browserBin != "" {
+		l = l.Bin(browserBin)
+	}
+	u := l.MustLaunch()
 
 	browser := rod.New().ControlURL(u).MustConnect()
 
@@ -38,6 +43,16 @@ func NewSmartAntiCaptchaFetcher(base *DefaultHTMLFetcher) *SmartAntiCaptchaFetch
 		cookies:     make(map[string]string),
 		userAgents:  make(map[string]string),
 	}
+}
+
+func rodBrowserBin() string {
+	for _, envName := range []string{"ROD_BROWSER_BIN", "CHROME_BIN", "CHROMIUM_BIN"} {
+		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
 
 func (s *SmartAntiCaptchaFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
