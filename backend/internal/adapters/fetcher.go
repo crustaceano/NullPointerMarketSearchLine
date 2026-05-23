@@ -67,12 +67,22 @@ func (f *DefaultHTMLFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, 
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", f.userAgent)
+	currentUA := f.userAgent
+	if bypassUA, ok := ctx.Value("bypass_ua").(string); ok && bypassUA != "" {
+		currentUA = bypassUA
+	}
+	req.Header.Set("User-Agent", currentUA)
+
+	if bypassCookies, ok := ctx.Value("bypass_cookies").(string); ok && bypassCookies != "" {
+		req.Header.Set("Cookie", bypassCookies)
+	}
+
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
 	req.Header.Set("Cache-Control", "no-cache")
 
 	resp, err := f.client.Do(req)
+
 	if err != nil {
 		return nil, fmt.Errorf("fetch html: %w", err)
 	}
@@ -109,13 +119,16 @@ func readLimited(r io.Reader, maxBytes int64) ([]byte, error) {
 func looksBlocked(body []byte) bool {
 	text := strings.ToLower(string(body))
 	blockMarkers := []string{
-		"captcha",
-		"капча",
-		"robot",
+		"captcha__form",
+		"/showcaptcha",
+		"/checkcaptcha",
+		"подтвердите, что вы не робот",
+		"докажите, что вы не робот",
 		"are you human",
 		"access denied",
 		"доступ ограничен",
 		"проверка безопасности",
+		"too many requests",
 	}
 
 	for _, marker := range blockMarkers {
