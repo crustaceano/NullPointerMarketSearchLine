@@ -103,15 +103,22 @@ function renderOfferCard(offer) {
   const card = document.createElement("article");
   card.className = "card";
 
-  const chars = Object.entries(offer.characteristics || {})
-    .map(([k, v]) => `<div><strong>${escapeHTML(k)}:</strong> ${escapeHTML(String(v))}</div>`)
+  const characteristics = Object.entries(offer.characteristics || {});
+  const chars = characteristics
+    .map(([k, v]) => `<div class="char-row"><strong>${escapeHTML(k)}:</strong> ${escapeHTML(String(v))}</div>`)
     .join("");
+  const details = characteristics.length > 0
+    ? `<details class="chars-details">
+        <summary>Характеристики (${characteristics.length})</summary>
+        <div class="chars">${chars}</div>
+      </details>`
+    : "";
 
   card.innerHTML = `
     <img src="${escapeAttr(offer.image)}" alt="${escapeAttr(offer.title)}" loading="lazy" />
     <div class="title">${escapeHTML(offer.title)}</div>
     <div class="price">${formatPrice(offer.price, offer.currency)}</div>
-    <div class="chars">${chars}</div>
+    ${details}
     <a href="${escapeAttr(offer.url)}" target="_blank" rel="noopener noreferrer">Открыть на источнике →</a>
   `;
   return card;
