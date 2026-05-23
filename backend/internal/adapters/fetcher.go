@@ -78,6 +78,9 @@ func (f *DefaultHTMLFetcher) Fetch(ctx context.Context, rawURL string) ([]byte, 
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.7")
 	req.Header.Set("Cache-Control", "no-cache")
+	for key, value := range shared.RequestHeaders(ctx) {
+		req.Header.Set(key, value)
+	}
 
 	resp, err := f.client.Do(req)
 

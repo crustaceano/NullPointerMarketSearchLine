@@ -16,6 +16,7 @@ type DetailEnrichmentConfig struct {
 	Concurrency int
 	Timeout     time.Duration
 	ShouldFetch func(rawURL string) bool
+	BuildURL    func(offer models.ProductOffer) string
 	Parse       func(page []byte) (map[string]string, error)
 }
 
@@ -55,7 +56,15 @@ func EnrichOfferDetails(ctx context.Context, fetcher HTMLFetcher, offers []model
 			}
 			defer cancel()
 
-			page, err := fetcher.Fetch(detailCtx, offers[index].URL)
+			detailURL := offers[index].URL
+			if cfg.BuildURL != nil {
+				detailURL = cfg.BuildURL(offers[index])
+			}
+			if detailURL == "" {
+				return
+			}
+
+			page, err := fetcher.Fetch(detailCtx, detailURL)
 			if err != nil {
 				return
 			}
