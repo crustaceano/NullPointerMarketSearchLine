@@ -67,6 +67,7 @@ func TestOzonSearchExtractsCharacteristicsFromTitle(t *testing.T) {
 	fetcher := &fakeHTMLFetcher{body: []byte(`
 		<html><body>
 			<div>
+				<img src="//cdn.ozon.ru/phone.webp">
 				<a href="/product/phone-123/">tecno Смартфон Spark Go 2 Ростест (EAC) 4/128 ГБ, Nano-SIM, серый</a>
 				<span>6 990 ₽</span>
 			</div>
@@ -188,9 +189,9 @@ func TestParseOzonProductDetailsParsesDataState(t *testing.T) {
 	if _, ok := chars["Артикул"]; ok {
 		t.Fatal("article should not be exposed as a user characteristic")
 	}
-)
+}
 
-func TestBuildOzonSearchURLUsesNormalizedRegion(t *testing.T) {
+func TestBuildOzonSearchURLDoesNotSendRegionParam(t *testing.T) {
 	url := buildOzonSearchURL(" ноутбук ", "питер")
 
 	if !strings.HasPrefix(url, "https://www.ozon.ru/search/?") {
@@ -199,10 +200,97 @@ func TestBuildOzonSearchURLUsesNormalizedRegion(t *testing.T) {
 	if !strings.Contains(url, "text=%D0%BD%D0%BE%D1%83%D1%82%D0%B1%D1%83%D0%BA") {
 		t.Fatalf("url does not contain escaped query: %s", url)
 	}
-	if !strings.Contains(url, "region=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3") {
-		t.Fatalf("url does not contain normalized region: %s", url)
+	if strings.Contains(url, "region=") {
+		t.Fatalf("url should not contain unsupported region parameter: %s", url)
 	}
 	if !strings.Contains(url, "from_global=true") {
 		t.Fatalf("url does not contain from_global=true: %s", url)
+	}
+}
+
+func TestOzonSearchFiltersSaleFallbackCards(t *testing.T) {
+	fetcher := &fakeHTMLFetcher{body: []byte(`
+		<html><body>
+			<div>
+				<img src="//cdn.ozon.ru/socks.webp">
+				<a href="/product/socks-111/">Распродажа</a>
+				<span>311 ₽</span>
+			</div>
+			<div>
+				<img src="//cdn.ozon.ru/phone.webp">
+				<a href="/product/phone-222/">Смартфон realme Note 60x Ростест (EAC) 3/64 ГБ, черный</a>
+				<span>5 695 ₽</span>
+			</div>
+		</body></html>
+	`)}
+
+	offers, err := NewOzon(fetcher).Search(context.Background(), "телефон", "Москва")
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(offers) != 1 {
+		t.Fatalf("len(offers) = %d, want 1", len(offers))
+	}
+	if offers[0].Title != "Смартфон realme Note 60x Ростест (EAC) 3/64 ГБ, черный" {
+		t.Fatalf("title = %q", offers[0].Title)
+	}
+}
+
+func TestOzonSearchDropsOverlongContainerTitle(t *testing.T) {
+	longTitle := strings.Repeat("Возможно, вам понравится Распродажа 311 ₽ Носки женские ", 5)
+	fetcher := &fakeHTMLFetcher{body: []byte(`
+		<html><body>
+			<div>
+				<img src="//cdn.ozon.ru/junk.webp">
+				<a href="/product/junk-111/">` + longTitle + `</a>
+				<span>311 ₽</span>
+			</div>
+			<div>
+				<img src="//cdn.ozon.ru/phone.webp">
+				<a href="/product/phone-222/">Смартфон Samsung Galaxy A07 4/64 ГБ, черный</a>
+				<span>7 226 ₽</span>
+			</div>
+		</body></html>
+	`)}
+
+	offers, err := NewOzon(fetcher).Search(context.Background(), "телефон", "Москва")
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(offers) != 1 {
+		t.Fatalf("len(offers) = %d, want 1", len(offers))
+	}
+	if offers[0].Title != "Смартфон Samsung Galaxy A07 4/64 ГБ, черный" {
+		t.Fatalf("title = %q", offers[0].Title)
+	}
+}
+
+func TestOzonSearchDoesNotReturnIrrelevantFallbackCards(t *testing.T) {
+	fetcher := &fakeHTMLFetcher{body: []byte(`
+		<html><body>
+			<div>
+				<img src="//cdn.ozon.ru/cap.webp">
+				<a href="/product/cap-111/">Бейсболка</a>
+				<span>322 ₽</span>
+			</div>
+			<div>
+				<img src="//cdn.ozon.ru/shirt.webp">
+				<a href="/product/shirt-222/">Рубашка</a>
+				<span>322 ₽</span>
+			</div>
+			<div>
+				<img src="//cdn.ozon.ru/cable.webp">
+				<a href="/product/cable-333/">Клемма на 2 провода Wago 221-412</a>
+				<span>322 ₽</span>
+			</div>
+		</body></html>
+	`)}
+
+	offers, err := NewOzon(fetcher).Search(context.Background(), "пальто детское", "Москва")
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(offers) != 0 {
+		t.Fatalf("len(offers) = %d, want 0: %#v", len(offers), offers)
 	}
 }

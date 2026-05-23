@@ -14,7 +14,6 @@ import (
 
 	"nullpointer/backend/internal/adapters/shared"
 	"nullpointer/backend/internal/models"
-	"nullpointer/backend/internal/regions"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -43,6 +42,7 @@ func (a *Ozon) Search(ctx context.Context, query, region string) ([]models.Produ
 	if err != nil {
 		return nil, err
 	}
+	offers = filterOzonOffersForQuery(offers, query)
 
 	log.Printf("Ozon search URL: %s, offers: %d", searchURL, len(offers))
 
@@ -54,7 +54,6 @@ func buildOzonSearchURL(query, region string) string {
 	values := url.Values{}
 	values.Set("text", strings.TrimSpace(query))
 	values.Set("from_global", "true")
-	values.Set("region", regions.Normalize(region))
 	return "https://www.ozon.ru/search/?" + values.Encode()
 }
 
@@ -89,13 +88,16 @@ func parseOzonOffers(html []byte, region string) ([]models.ProductOffer, error) 
 		}
 		title = cleanText(title)
 
-		if len([]rune(title)) < 5 {
+		if !isUsefulOzonTitle(title) {
 			return true
 		}
 
 		card := nearestCard(s)
 		price := extractPrice(card.Text())
 		image := extractImage(card)
+		if price <= 0 || image == "" {
+			return true
+		}
 
 		offers = append(offers, models.ProductOffer{
 			Source:   "Ozon",
@@ -185,15 +187,20 @@ func parseOzonStateOffers(doc *goquery.Document, region string) []models.Product
 			}
 
 			title := cleanText(extractOzonStateTitle(item.MainState))
-			if len([]rune(title)) < 5 {
+			if !isUsefulOzonTitle(title) {
+				continue
+			}
+			price := extractOzonStatePrice(item.MainState)
+			image := extractOzonStateImage(item.TileImage)
+			if price <= 0 || image == "" {
 				continue
 			}
 
 			offers = append(offers, models.ProductOffer{
 				Source:   "Ozon",
 				Title:    title,
-				Image:    extractOzonStateImage(item.TileImage),
-				Price:    extractOzonStatePrice(item.MainState),
+				Image:    image,
+				Price:    price,
 				Currency: "RUB",
 				URL:      productURL,
 				Characteristics: shared.MergeCharacteristics(
@@ -273,6 +280,92 @@ func extractOzonStateCharacteristics(states []ozonMainState) map[string]string {
 		}
 	}
 	return chars
+}
+
+func filterOzonOffersForQuery(offers []models.ProductOffer, query string) []models.ProductOffer {
+	tokens := ozonQueryTokens(query)
+	if len(tokens) == 0 || len(offers) == 0 {
+		return offers
+	}
+
+	filtered := make([]models.ProductOffer, 0, len(offers))
+	for _, offer := range offers {
+		if ozonOfferMatchesQuery(offer, tokens) {
+			filtered = append(filtered, offer)
+		}
+	}
+	return filtered
+}
+
+func ozonOfferMatchesQuery(offer models.ProductOffer, tokens []string) bool {
+	haystack := strings.ToLower(offer.Title + " " + characteristicsText(offer.Characteristics))
+	for _, token := range tokens {
+		if strings.Contains(haystack, token) {
+			return true
+		}
+		for _, synonym := range ozonQuerySynonyms(token) {
+			if strings.Contains(haystack, synonym) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func ozonQueryTokens(query string) []string {
+	rawTokens := strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'z') && !(r >= 'а' && r <= 'я') && r != 'ё'
+	})
+	tokens := make([]string, 0, len(rawTokens))
+	for _, token := range rawTokens {
+		if len([]rune(token)) < 3 {
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
+func ozonQuerySynonyms(token string) []string {
+	switch token {
+	case "телефон", "телефоны":
+		return []string{"смартфон", "iphone", "айфон", "android"}
+	case "кофта", "кофты":
+		return []string{"свитшот", "толстовка", "худи", "джемпер", "свитер"}
+	default:
+		return nil
+	}
+}
+
+func characteristicsText(chars map[string]string) string {
+	if len(chars) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(chars)*2)
+	for key, value := range chars {
+		parts = append(parts, key, value)
+	}
+	return strings.Join(parts, " ")
+}
+
+func isUsefulOzonTitle(title string) bool {
+	runeCount := len([]rune(title))
+	if runeCount < 5 || runeCount > 180 {
+		return false
+	}
+	lower := strings.ToLower(title)
+	badTitles := []string{
+		"распродажа",
+		"возможно, вам понравится",
+		"рекомендуем",
+		"похожие товары",
+	}
+	for _, badTitle := range badTitles {
+		if lower == badTitle || strings.HasPrefix(lower, badTitle+" ") {
+			return false
+		}
+	}
+	return true
 }
 
 func ozonBaseCharacteristics(region string) map[string]string {
